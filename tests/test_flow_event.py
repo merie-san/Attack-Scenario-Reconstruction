@@ -84,7 +84,7 @@ class TestFlowEventDictFunctions(unittest.TestCase):
             "B": 2
         })
     
-    def test_dict_to_flow_event_no_other_attributes(self):
+    def test_flow_event_to_dict_no_other_attributes(self):
         flow_event = FlowEvent(
             flow_id="12345",
             source_ip="192.168.1.1",
