@@ -30,7 +30,7 @@ class FlowEventGenerator:
         protocol_col: str = "Protocol",
         timestamp_col: str = "Timestamp",
     ):
-        ad_df = df[self.detector.feature_names_in_]
+        ad_df = df[[col for col in df.columns if col not in {flow_id_col, source_ip_col, source_port_col, destination_ip_col, destination_port_col, protocol_col, timestamp_col}]]
         anomaly_scores = self.detector.predict_proba(ad_df)[:, 1]
         with open(log_path, "a") as f:
             for i in range(len(df)):
@@ -44,5 +44,6 @@ class FlowEventGenerator:
                     protocol=row[protocol_col],
                     timestamp=row[timestamp_col],
                     anomaly_score=anomaly_scores[i],
+                    other_attributes={col.strip(): row[col] for col in df.columns if col not in {flow_id_col, source_ip_col, source_port_col, destination_ip_col, destination_port_col, protocol_col, timestamp_col}}
                 )
                 f.write(str(flow_event) + "\n")
