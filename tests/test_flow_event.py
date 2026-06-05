@@ -8,11 +8,11 @@ class TestFlowEventStringFunctions(unittest.TestCase):
         flow_event = FlowEvent(
             flow_id="12345",
             source_ip="192.168.1.1",
-            source_port=8080,
+            source_port="8080",
             destination_ip="10.0.0.1",
-            destination_port=443,
+            destination_port="443",
             protocol="TCP",
-            timestamp=datetime(2023, 1, 1, 12, 0, 0),
+            timestamp="2023-01-01T12:00:00",
             anomaly_score=0.8
         )
         self.assertEqual(str(flow_event), "[flow_id=12345, source_ip=192.168.1.1, source_port=8080, destination_ip=10.0.0.1, destination_port=443, protocol=TCP, timestamp=2023-01-01 12:00:00, anomaly_score=0.8]")
@@ -21,11 +21,11 @@ class TestFlowEventStringFunctions(unittest.TestCase):
         flow_event = FlowEvent(
             flow_id="12345",
             source_ip="192.168.1.1",
-            source_port=8080,
+            source_port="8080",
             destination_ip="10.0.0.1",
-            destination_port=443,
+            destination_port="443",
             protocol="TCP",
-            timestamp=datetime(2023, 1, 1, 12, 0, 0),
+            timestamp="2023-01-01T12:00:00",
             anomaly_score=0.8,
             other_attributes={"A": 1, "B": 2}
         )
@@ -63,11 +63,11 @@ class TestFlowEventDictFunctions(unittest.TestCase):
         flow_event = FlowEvent(
             flow_id="12345",
             source_ip="192.168.1.1",
-            source_port=8080,
+            source_port="8080",
             destination_ip="10.0.0.1",
-            destination_port=443,
+            destination_port="443",
             protocol="TCP",
-            timestamp=datetime(2023, 1, 1, 12, 0, 0),
+            timestamp="2023-01-01T12:00:00",
             anomaly_score=0.8,
             other_attributes={"A": 1, "B": 2}
         )
@@ -88,11 +88,11 @@ class TestFlowEventDictFunctions(unittest.TestCase):
         flow_event = FlowEvent(
             flow_id="12345",
             source_ip="192.168.1.1",
-            source_port=8080,
+            source_port="8080",
             destination_ip="10.0.0.1",
-            destination_port=443,
+            destination_port="443",
             protocol="TCP",
-            timestamp=datetime(2023, 1, 1, 12, 0, 0),
+            timestamp="2023-01-01T12:00:00",
             anomaly_score=0.8,
         )
         self.assertEqual(flow_event.to_dict(), {

@@ -34,16 +34,16 @@ class TestFlowEventGeneratorLogEvents(unittest.TestCase):
         cls = RandomForestClassifier()
         cls.fit(X_train, y_train)
         pipeline = Pipeline([("cls", cls)])
-        generator = FlowEventGenerator(detector=pipeline)
+        generator = FlowEventGenerator(detector=pipeline, label_col="Label")
 
         final_event = FlowEvent(
             flow_id="12345",
             source_ip="192.168.1.1",
-            source_port=8080,
+            source_port="8080",
             destination_ip="10.0.0.1",
-            destination_port=80,
+            destination_port="80",
             protocol="6",
-            timestamp=datetime(2023, 1, 1, 12, 0, 0),
+            timestamp="2023-01-01T12:00:00",
             anomaly_score=cls.predict_proba([[0, 1]])[0][1],
             other_attributes={"col1": 0, "col2": 1}
         )
@@ -82,14 +82,14 @@ class TestFlowEventGeneratorLogEvents(unittest.TestCase):
                     datetime(2023, 1, 1, 12, 0, 0),
                     datetime(2023, 1, 1, 12, 5, 0),
                 ],
-                "Label": [0, 1],
+                "Type": [0, 1],
             }
         )
-        y_train, X_train = df_training["Label"], df_training[["col1", "col2"]]
+        y_train, X_train = df_training["Type"], df_training[["col1", "col2"]]
         cls = RandomForestClassifier()
         cls.fit(X_train, y_train)
         pipeline = Pipeline([("cls", cls)])
-        generator = FlowEventGenerator(detector=pipeline)
+        generator = FlowEventGenerator(detector=pipeline, label_col="Type")
 
         test_df = pd.DataFrame(
             {
@@ -119,11 +119,11 @@ class TestFlowEventGeneratorLogEvents(unittest.TestCase):
         final_event = FlowEvent(
             flow_id="12345",
             source_ip="192.168.1.1",
-            source_port=8080,
+            source_port="8080",
             destination_ip="10.0.0.1",
-            destination_port=80,
+            destination_port="80",
             protocol="6",
-            timestamp=datetime(2023, 1, 1, 12, 0, 0),
+            timestamp="2023-01-01T12:00:00",
             anomaly_score=cls.predict_proba([[0, 1]])[0][1],
             other_attributes={"col1": 0, "col2": 1}
         )
