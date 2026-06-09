@@ -27,7 +27,7 @@ class TestFlowEventStringFunctions(unittest.TestCase):
             protocol="TCP",
             timestamp="2023-01-01T12:00:00",
             anomaly_score=0.8,
-            other_attributes={"A": 1, "B": 2}
+            attack_scores={"A": 1, "B": 2}
         )
         self.assertEqual(str(flow_event), "[flow_id=12345, source_ip=192.168.1.1, source_port=8080, destination_ip=10.0.0.1, destination_port=443, protocol=TCP, timestamp=2023-01-01 12:00:00, anomaly_score=0.8, A=1, B=2]")
 
@@ -42,7 +42,7 @@ class TestFlowEventStringFunctions(unittest.TestCase):
         self.assertEqual(flow_event.protocol, "TCP")
         self.assertEqual(flow_event.timestamp, datetime(2023, 1, 1, 12, 0, 0))
         self.assertEqual(flow_event.anomaly_score, 0.8)
-        self.assertEqual(flow_event.other_attributes, {})
+        self.assertEqual(flow_event.attack_scores, {})
 
     def test_string_to_flow_event_with_other_attributes(self):
         string = "[flow_id=12345, source_ip=192.168.1.1, source_port=8080, destination_ip=10.0.0.1, destination_port=443, protocol=TCP, timestamp=2023-01-01 12:00:00, anomaly_score=0.8, A=1, B=2]"
@@ -55,7 +55,7 @@ class TestFlowEventStringFunctions(unittest.TestCase):
         self.assertEqual(flow_event.protocol, "TCP")
         self.assertEqual(flow_event.timestamp, datetime(2023, 1, 1, 12, 0, 0))
         self.assertEqual(flow_event.anomaly_score, 0.8)
-        self.assertEqual(flow_event.other_attributes, {"A": "1", "B": "2"})
+        self.assertEqual(flow_event.attack_scores, {"A": "1", "B": "2"})
 
 class TestFlowEventDictFunctions(unittest.TestCase):
 
@@ -69,7 +69,7 @@ class TestFlowEventDictFunctions(unittest.TestCase):
             protocol="TCP",
             timestamp="2023-01-01T12:00:00",
             anomaly_score=0.8,
-            other_attributes={"A": 1, "B": 2}
+            attack_scores={"A": 1, "B": 2}
         )
         self.assertEqual(flow_event.to_dict(), {
             "flow_id": "12345",
@@ -126,7 +126,8 @@ class TestFlowEventDictFunctions(unittest.TestCase):
         self.assertEqual(flow_event.protocol, "TCP")
         self.assertEqual(flow_event.timestamp, datetime(2023, 1, 1, 12, 0, 0))
         self.assertEqual(flow_event.anomaly_score, 0.8)
-
+        self.assertEqual(flow_event.attack_scores, {})
+        
     def test_dict_to_flow_event_with_other_attributes(self):
         data = {
             "flow_id": "12345",
@@ -149,7 +150,7 @@ class TestFlowEventDictFunctions(unittest.TestCase):
         self.assertEqual(flow_event.protocol, "TCP")
         self.assertEqual(flow_event.timestamp, datetime(2023, 1, 1, 12, 0, 0))
         self.assertEqual(flow_event.anomaly_score, 0.8)
-        self.assertEqual(flow_event.other_attributes, {"A": 1, "B": 2})
+        self.assertEqual(flow_event.attack_scores, {"A": 1, "B": 2})
 
 if __name__ == '__main__':
     unittest.main()

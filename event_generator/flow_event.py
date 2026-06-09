@@ -14,7 +14,7 @@ class FlowEvent:
         timestamp: str | datetime,
         anomaly_score: str | float,
         timestamp_template: str | None = None,
-        other_attributes: dict | None = None,
+        attack_scores: dict | None = None,
     ):
         if isinstance(timestamp, str):
             if timestamp_template:
@@ -30,11 +30,11 @@ class FlowEvent:
         self.protocol = protocol
         self.timestamp = timestamp
         self.anomaly_score = float(anomaly_score) 
-        self.other_attributes = other_attributes if other_attributes is not None else {}
+        self.attack_scores = attack_scores if attack_scores is not None else {}
 
     def __str__(self):
         other_attrs_str = ", ".join(
-            f"{key}={value}" for key, value in self.other_attributes.items()
+            f"{key}={value}" for key, value in self.attack_scores.items()
         )
         return (
             f"[flow_id={self.flow_id}, source_ip={self.source_ip}, source_port={self.source_port}, destination_ip={self.destination_ip}, destination_port={self.destination_port}, protocol={self.protocol}, timestamp={self.timestamp}, anomaly_score={self.anomaly_score}, {other_attrs_str}]"
@@ -52,7 +52,7 @@ class FlowEvent:
             "protocol": self.protocol,
             "timestamp": self.timestamp,
             "anomaly_score": self.anomaly_score,
-            **self.other_attributes,
+            **self.attack_scores,
         }
 
     @staticmethod
@@ -67,7 +67,7 @@ class FlowEvent:
             timestamp=data["timestamp"],
             anomaly_score=data["anomaly_score"],
             timestamp_template=timestamp_template,
-            other_attributes={
+            attack_scores={
                 k: v
                 for k, v in data.items()
                 if k
@@ -101,7 +101,7 @@ class FlowEvent:
             timestamp=data["timestamp"],
             anomaly_score=data["anomaly_score"],
             timestamp_template=timestamp_template,
-            other_attributes={
+            attack_scores={
                 k: v
                 for k, v in data.items()
                 if k
