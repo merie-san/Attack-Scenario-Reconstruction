@@ -1,156 +1,170 @@
 import unittest
-from event_generator.flow_event import FlowEvent
+from event_convertor.flow_event import FlowEvent
 from datetime import datetime
 
 class TestFlowEventStringFunctions(unittest.TestCase):
 
-    def test_flow_event_to_string_no_other_attributes(self):
+    def test_flow_event_to_string_empty_attack_scores(self):
         flow_event = FlowEvent(
             flow_id="12345",
             source_ip="192.168.1.1",
             source_port="8080",
             destination_ip="10.0.0.1",
             destination_port="443",
-            protocol="TCP",
-            timestamp="2023-01-01T12:00:00",
-            anomaly_score=0.8
-        )
-        self.assertEqual(str(flow_event), "[flow_id=12345, source_ip=192.168.1.1, source_port=8080, destination_ip=10.0.0.1, destination_port=443, protocol=TCP, timestamp=2023-01-01 12:00:00, anomaly_score=0.8]")
-    
-    def test_flow_event_to_string_with_other_attributes(self):
-        flow_event = FlowEvent(
-            flow_id="12345",
-            source_ip="192.168.1.1",
-            source_port="8080",
-            destination_ip="10.0.0.1",
-            destination_port="443",
-            protocol="TCP",
-            timestamp="2023-01-01T12:00:00",
+            protocol="6",
+            start_time=datetime(2023,1,1,12),
+            end_time=datetime(2023,1,2,2),
             anomaly_score=0.8,
-            attack_scores={"A": 1, "B": 2}
+            attack_scores={}
         )
-        self.assertEqual(str(flow_event), "[flow_id=12345, source_ip=192.168.1.1, source_port=8080, destination_ip=10.0.0.1, destination_port=443, protocol=TCP, timestamp=2023-01-01 12:00:00, anomaly_score=0.8, A=1, B=2]")
+        self.assertEqual(str(flow_event), "[flow_id=12345, source_ip=192.168.1.1, source_port=8080, destination_ip=10.0.0.1, destination_port=443, protocol=6, start_time=2023-01-01 12:00:00, end_time=2023-01-02 02:00:00, anomaly_score=0.8]")
+    
+    def test_flow_event_to_string_attack_scores(self):
+        flow_event = FlowEvent(
+            flow_id="12345",
+            source_ip="192.168.1.1",
+            source_port="8080",
+            destination_ip="10.0.0.1",
+            destination_port="443",
+            protocol="6",
+            start_time=datetime(2023,1,1,12),
+            end_time=datetime(2023,1,2,2),
+            anomaly_score=0.8,
+            attack_scores={"attack_1": 0.8, "attack_2": 0.6}
+        )
+        self.assertEqual(str(flow_event), "[flow_id=12345, source_ip=192.168.1.1, source_port=8080, destination_ip=10.0.0.1, destination_port=443, protocol=6, start_time=2023-01-01 12:00:00, end_time=2023-01-02 02:00:00, anomaly_score=0.8, attack_1=0.8, attack_2=0.6]")
 
-    def test_string_to_flow_event_no_other_attributes(self):
-        string = "[flow_id=12345, source_ip=192.168.1.1, source_port=8080, destination_ip=10.0.0.1, destination_port=443, protocol=TCP, timestamp=2023-01-01 12:00:00, anomaly_score=0.8]"
+    def test_string_to_flow_event_empty_attack_scores(self):
+        string = "[flow_id=12345, source_ip=192.168.1.1, source_port=8080, destination_ip=10.0.0.1, destination_port=443, protocol=6, start_time=2023-01-01 12:00:00, end_time=2023-01-02 02:00:00, anomaly_score=0.8]"
         flow_event = FlowEvent.from_str(string)
         self.assertEqual(flow_event.flow_id, "12345")
         self.assertEqual(flow_event.source_ip, "192.168.1.1")
-        self.assertEqual(flow_event.source_port, 8080)
+        self.assertEqual(flow_event.source_port, "8080")
         self.assertEqual(flow_event.destination_ip, "10.0.0.1")
-        self.assertEqual(flow_event.destination_port, 443)
-        self.assertEqual(flow_event.protocol, "TCP")
-        self.assertEqual(flow_event.timestamp, datetime(2023, 1, 1, 12, 0, 0))
+        self.assertEqual(flow_event.destination_port, "443")
+        self.assertEqual(flow_event.protocol, "6")
+        self.assertEqual(flow_event.start_time, datetime(2023, 1, 1, 12, 0, 0))
+        self.assertEqual(flow_event.end_time, datetime(2023, 1, 2, 2, 0, 0))
         self.assertEqual(flow_event.anomaly_score, 0.8)
         self.assertEqual(flow_event.attack_scores, {})
 
-    def test_string_to_flow_event_with_other_attributes(self):
-        string = "[flow_id=12345, source_ip=192.168.1.1, source_port=8080, destination_ip=10.0.0.1, destination_port=443, protocol=TCP, timestamp=2023-01-01 12:00:00, anomaly_score=0.8, A=1, B=2]"
+    def test_string_to_flow_event_attack_scores(self):
+        string = "[flow_id=12345, source_ip=192.168.1.1, source_port=8080, destination_ip=10.0.0.1, destination_port=443, protocol=6, start_time=2023-01-01T12:00:00, end_time=2023-01-02T02:00:00, anomaly_score=0.8, attack_1=0.8, attack_2=0.6]"
         flow_event = FlowEvent.from_str(string)
         self.assertEqual(flow_event.flow_id, "12345")
         self.assertEqual(flow_event.source_ip, "192.168.1.1")
-        self.assertEqual(flow_event.source_port, 8080)
+        self.assertEqual(flow_event.source_port, "8080")
         self.assertEqual(flow_event.destination_ip, "10.0.0.1")
-        self.assertEqual(flow_event.destination_port, 443)
-        self.assertEqual(flow_event.protocol, "TCP")
-        self.assertEqual(flow_event.timestamp, datetime(2023, 1, 1, 12, 0, 0))
+        self.assertEqual(flow_event.destination_port, "443")
+        self.assertEqual(flow_event.protocol, "6")
+        self.assertEqual(flow_event.start_time, datetime(2023, 1, 1, 12, 0, 0))
+        self.assertEqual(flow_event.end_time, datetime(2023, 1, 2, 2, 0, 0))
         self.assertEqual(flow_event.anomaly_score, 0.8)
-        self.assertEqual(flow_event.attack_scores, {"A": "1", "B": "2"})
+        self.assertEqual(flow_event.attack_scores, {"attack_1": 0.8, "attack_2": 0.6})
 
 class TestFlowEventDictFunctions(unittest.TestCase):
 
-    def test_flow_event_to_dict_with_other_attributes(self):
+    def test_flow_event_to_dict_attack_scores(self):
         flow_event = FlowEvent(
             flow_id="12345",
             source_ip="192.168.1.1",
             source_port="8080",
             destination_ip="10.0.0.1",
             destination_port="443",
-            protocol="TCP",
-            timestamp="2023-01-01T12:00:00",
+            protocol="6",
+            start_time=datetime(2023, 1, 1, 12, 0, 0),
+            end_time=datetime(2023, 1, 2, 2, 0, 0),
             anomaly_score=0.8,
-            attack_scores={"A": 1, "B": 2}
+            attack_scores={"attack_1": 0.8, "attack_2": 0.6}
         )
         self.assertEqual(flow_event.to_dict(), {
             "flow_id": "12345",
             "source_ip": "192.168.1.1",
-            "source_port": 8080,
+            "source_port": "8080",
             "destination_ip": "10.0.0.1",
-            "destination_port": 443,
-            "protocol": "TCP",
-            "timestamp": datetime(2023, 1, 1, 12, 0, 0),
+            "destination_port": "443",
+            "protocol": "6",
+            "start_time": datetime(2023, 1, 1, 12, 0, 0),
+            "end_time": datetime(2023, 1, 2, 2, 0, 0),
             "anomaly_score": 0.8,
-            "A": 1,
-            "B": 2
+            "attack_1": 0.8,
+            "attack_2": 0.6
         })
     
-    def test_flow_event_to_dict_no_other_attributes(self):
+    def test_flow_event_to_dict_empty_attack_scores(self):
         flow_event = FlowEvent(
             flow_id="12345",
             source_ip="192.168.1.1",
             source_port="8080",
             destination_ip="10.0.0.1",
             destination_port="443",
-            protocol="TCP",
-            timestamp="2023-01-01T12:00:00",
+            protocol="6",
+            start_time=datetime(2023, 1, 1, 12, 0, 0),
+            end_time=datetime(2023, 1, 2, 2, 0, 0),
             anomaly_score=0.8,
+            attack_scores={}
         )
         self.assertEqual(flow_event.to_dict(), {
             "flow_id": "12345",
             "source_ip": "192.168.1.1",
-            "source_port": 8080,
+            "source_port": "8080",
             "destination_ip": "10.0.0.1",
-            "destination_port": 443,
-            "protocol": "TCP",
-            "timestamp": datetime(2023, 1, 1, 12, 0, 0),
+            "destination_port": "443",
+            "protocol": "6",
+            "start_time": datetime(2023, 1, 1, 12, 0, 0),
+            "end_time": datetime(2023, 1, 2, 2, 0, 0),
             "anomaly_score": 0.8,
         })
     
-    def test_dict_to_flow_event_no_other_attributes(self):
+    def test_dict_to_flow_event_empty_attack_scores(self):
         data = {
             "flow_id": "12345",
             "source_ip": "192.168.1.1",
-            "source_port": 8080,
+            "source_port": "8080",
             "destination_ip": "10.0.0.1",
-            "destination_port": 443,
-            "protocol": "TCP",
-            "timestamp": datetime(2023, 1, 1, 12, 0, 0),
+            "destination_port": "443",
+            "protocol": "6",
+            "start_time": datetime(2023, 1, 1, 12, 0, 0),
+            "end_time": datetime(2023, 1, 2, 2, 0, 0),
             "anomaly_score": 0.8
         }
         flow_event = FlowEvent.from_dict(data)
         self.assertEqual(flow_event.flow_id, "12345")
         self.assertEqual(flow_event.source_ip, "192.168.1.1")
-        self.assertEqual(flow_event.source_port, 8080)
+        self.assertEqual(flow_event.source_port, "8080")
         self.assertEqual(flow_event.destination_ip, "10.0.0.1")
-        self.assertEqual(flow_event.destination_port, 443)
-        self.assertEqual(flow_event.protocol, "TCP")
-        self.assertEqual(flow_event.timestamp, datetime(2023, 1, 1, 12, 0, 0))
+        self.assertEqual(flow_event.destination_port, "443")
+        self.assertEqual(flow_event.protocol, "6")
+        self.assertEqual(flow_event.start_time, datetime(2023, 1, 1, 12, 0, 0))
+        self.assertEqual(flow_event.end_time, datetime(2023, 1, 2, 2, 0, 0))
         self.assertEqual(flow_event.anomaly_score, 0.8)
         self.assertEqual(flow_event.attack_scores, {})
         
-    def test_dict_to_flow_event_with_other_attributes(self):
+    def test_dict_to_flow_event_attack_scores(self):
         data = {
             "flow_id": "12345",
             "source_ip": "192.168.1.1",
-            "source_port": 8080,
+            "source_port": "8080",
             "destination_ip": "10.0.0.1",
-            "destination_port": 443,
-            "protocol": "TCP",
-            "timestamp": datetime(2023, 1, 1, 12, 0, 0),
+            "destination_port": "443",
+            "protocol": "6",
+            "start_time": datetime(2023, 1, 1, 12, 0, 0),
+            "end_time": datetime(2023, 1, 2, 2, 0, 0),
             "anomaly_score": 0.8,
-            "A": 1,
-            "B": 2
+            "attack_1": 0.8,
+            "attack_2": 0.6
         }
         flow_event = FlowEvent.from_dict(data)
         self.assertEqual(flow_event.flow_id, "12345")
         self.assertEqual(flow_event.source_ip, "192.168.1.1")
-        self.assertEqual(flow_event.source_port, 8080)
+        self.assertEqual(flow_event.source_port, "8080")
         self.assertEqual(flow_event.destination_ip, "10.0.0.1")
-        self.assertEqual(flow_event.destination_port, 443)
-        self.assertEqual(flow_event.protocol, "TCP")
-        self.assertEqual(flow_event.timestamp, datetime(2023, 1, 1, 12, 0, 0))
+        self.assertEqual(flow_event.destination_port, "443")
+        self.assertEqual(flow_event.protocol, "6")
+        self.assertEqual(flow_event.start_time, datetime(2023, 1, 1, 12, 0, 0))
+        self.assertEqual(flow_event.end_time, datetime(2023, 1, 2, 2, 0, 0))
         self.assertEqual(flow_event.anomaly_score, 0.8)
-        self.assertEqual(flow_event.attack_scores, {"A": 1, "B": 2})
+        self.assertEqual(flow_event.attack_scores, {"attack_1": 0.8, "attack_2": 0.6})
 
 if __name__ == '__main__':
     unittest.main()

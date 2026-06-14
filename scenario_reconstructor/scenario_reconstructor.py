@@ -120,6 +120,7 @@ class Exploit:
         new_exploit.set_cardinality(new_cardinality)
         return new_exploit
 
+
 class ExploitRequirement:
 
     def __init__(self, attack_type: AttackType, acceptable_source_ips: list[str], acceptable_destination_ip: str, min_start_time: datetime, max_end_time: datetime):
@@ -144,22 +145,24 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
 
     def __init__(self, hosts: list[Host], attacker_ips: list[str], host_attributes: type[HostAttribute], attack_types: list[AttackType], exploit_log_path: str, state_log_path: str):
         self.host_dict = {host.ip_address: host for host in hosts}
-        self.attacker_dict = {attacker_ip: Host(attacker_ip) for attacker_ip in attacker_ips}
+        self.attacker_dict = {attacker_ip: Host(
+            attacker_ip) for attacker_ip in attacker_ips}
         for host in self.attacker_dict.values():
-            host.update_compromission_attributes({attribute for attribute in host_attributes})
+            host.update_compromission_attributes(
+                {attribute for attribute in host_attributes})
         self.attack_types = attack_types
         self.exploits_dict = {}
         self.exploit_log_path = exploit_log_path
-        self.aggregated_exploits={}
-        initial_state={ip_addr: set() for ip_addr in self.host_dict}
-        self.state_sequence=[initial_state]
-        self.exploit_sequence=[]
-        self.state_log_path=state_log_path
+        self.aggregated_exploits = {}
+        initial_state = {ip_addr: set() for ip_addr in self.host_dict}
+        self.state_sequence = [initial_state]
+        self.exploit_sequence = []
+        self.state_log_path = state_log_path
 
     def check_preconditions(self, exploit: Exploit) -> bool:
 
         source_preconditions, destination_preconditions = exploit.attack_type.get_preconditions()
-        all_hosts= self.attacker_dict | self.host_dict
+        all_hosts = self.attacker_dict | self.host_dict
         source_host = all_hosts.get(exploit.source_ip)
         destination_host = all_hosts.get(exploit.destination_ip)
 
@@ -178,10 +181,30 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
                 return False
 
         return True
+    
+    def check_timing(self, exploit: Exploit)-> bool:
+        last_flow_time = datetime.now()
+        updated = False
+
+        for exploit_id in self.exploits_dict.keys():
+            if exploit.destination_ip == exploit_id.split('-')[1] and self.exploits_dict[exploit_id][-1].end_time < last_flow_time:
+                last_flow_time = self.exploits_dict[exploit_id][-1].end_time
+                updated = True
+
+        for exploit_id in self.exploits_dict.keys():
+            if exploit.source_ip == exploit_id.split('-')[1] and self.exploits_dict[exploit_id][-1].end_time < last_flow_time:
+                last_flow_time = self.exploits_dict[exploit_id][-1].end_time
+                updated = True
+
+        if not updated:
+            last_flow_time = datetime.min
+
+        return exploit.start_time > last_flow_time
+
 
     def compute_requirements(self, exploit: Exploit) -> set[ExploitRequirement] | None:
 
-        all_hosts= self.attacker_dict | self.host_dict
+        all_hosts = self.attacker_dict | self.host_dict
         source_ip = exploit.source_ip
         source_host = all_hosts.get(source_ip)
         destination_ip = exploit.destination_ip
@@ -266,12 +289,12 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
 
             if len(acceptable_source_ips) > 0:
                 last_update_time = datetime.now()
-                updated = False                
+                updated = False
 
                 for exploit_id in self.exploits_dict.keys():
                     if red_ip == exploit_id.split('-')[1] and self.exploits_dict[exploit_id][-1].end_time < last_update_time:
-                            last_update_time = self.exploits_dict[exploit_id][-1].end_time
-                            updated = True
+                        last_update_time = self.exploits_dict[exploit_id][-1].end_time
+                        updated = True
 
                 for ip_addr in acceptable_source_ips:
                     for exploit_id in self.exploits_dict.keys():
@@ -314,8 +337,9 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
                     else:
                         results_dict[exploit_id] = exploit
 
-            self.exploits_dict = {exploit_id : [] for exploit_id in results_dict}
-            self.aggregated_exploits=results_dict
+            self.exploits_dict = {exploit_id: []
+                                  for exploit_id in results_dict}
+            self.aggregated_exploits = results_dict
 
     def get_exploit_dict_size(self):
         res = 0
@@ -323,22 +347,25 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
             res += len(exploits)
         return res
 
+    def get_state_sequence_size(self):
+        return len(self.state_sequence)
+
     def register_network_state(self, exploit: Exploit):
-        new_network_state={}
+        new_network_state = {}
         for ip_addr, host in self.host_dict.items():
-            new_network_state[ip_addr]=host.get_compromission_attributes()
+            new_network_state[ip_addr] = host.get_compromission_attributes()
         self.state_sequence.append(new_network_state)
         self.exploit_sequence.append(exploit)
 
     def persist_history(self):
         with open(self.state_log_path, "a") as f:
             for i in range(len(self.exploit_sequence)):
-                str_conv="-".join([f"{ip_addr}={{"+f"{', '.join([att.value for att in att_set])}"+"}" for ip_addr, att_set in self.state_sequence[i].items()])
+                str_conv = "-".join([f"{ip_addr}={{"+f"{', '.join([att.value for att in att_set])}" +
+                                    "}" for ip_addr, att_set in self.state_sequence[i].items()])
                 f.write(f"State({str_conv})"+'\n')
                 f.write(str(self.exploit_sequence[i])+'\n')
-            str_conv="-".join([f"{ip_addr}={{"+f"{', '.join([att.value for att in att_set])}"+"}" for ip_addr, att_set in self.state_sequence[-1].items()])
+            str_conv = "-".join([f"{ip_addr}={{"+f"{', '.join([att.value for att in att_set])}" +
+                                "}" for ip_addr, att_set in self.state_sequence[-1].items()])
             f.write(f"State({str_conv})"+'\n')
-        self.state_sequence=[]
-        self.exploit_sequence=[]
-        
-
+        self.state_sequence = []
+        self.exploit_sequence = []

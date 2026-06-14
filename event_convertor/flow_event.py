@@ -7,40 +7,29 @@ class FlowEvent:
         self,
         flow_id: str,
         source_ip: str,
-        source_port: str | int,
+        source_port: str,
         destination_ip: str,
-        destination_port: str | int,
+        destination_port: str,
         protocol: str,
-        timestamp: str | datetime,
-        anomaly_score: str | float,
-        timestamp_template: str | None = None,
-        attack_scores: dict | None = None,
+        start_time: datetime,
+        end_time: datetime,
+        anomaly_score: float,
+        attack_scores: dict[str,float],
     ):
-        if isinstance(timestamp, str):
-            if timestamp_template:
-                timestamp = datetime.strptime(timestamp, timestamp_template)
-            else:
-                timestamp = datetime.fromisoformat(timestamp)
 
         self.flow_id = flow_id
         self.source_ip = source_ip
-        self.source_port = int(source_port)
+        self.source_port = source_port
         self.destination_ip = destination_ip 
-        self.destination_port = int(destination_port) 
+        self.destination_port = destination_port
         self.protocol = protocol
-        self.timestamp = timestamp
-        self.anomaly_score = float(anomaly_score) 
-        self.attack_scores = attack_scores if attack_scores is not None else {}
+        self.start_time = start_time
+        self.end_time=end_time
+        self.anomaly_score = anomaly_score 
+        self.attack_scores = attack_scores
 
     def __str__(self):
-        other_attrs_str = ", ".join(
-            f"{key}={value}" for key, value in self.attack_scores.items()
-        )
-        return (
-            f"[flow_id={self.flow_id}, source_ip={self.source_ip}, source_port={self.source_port}, destination_ip={self.destination_ip}, destination_port={self.destination_port}, protocol={self.protocol}, timestamp={self.timestamp}, anomaly_score={self.anomaly_score}, {other_attrs_str}]"
-            if other_attrs_str
-            else f"[flow_id={self.flow_id}, source_ip={self.source_ip}, source_port={self.source_port}, destination_ip={self.destination_ip}, destination_port={self.destination_port}, protocol={self.protocol}, timestamp={self.timestamp}, anomaly_score={self.anomaly_score}]"
-        )
+        return f"[flow_id={self.flow_id}, source_ip={self.source_ip}, source_port={self.source_port}, destination_ip={self.destination_ip}, destination_port={self.destination_port}, protocol={self.protocol}, start_time={self.start_time}, end_time={self.end_time}, anomaly_score={self.anomaly_score}{", " if self.attack_scores else ""}{", ".join([f"{k}={v}" for k, v in self.attack_scores.items()])}]"
 
     def to_dict(self):
         return {
@@ -50,13 +39,14 @@ class FlowEvent:
             "destination_ip": self.destination_ip,
             "destination_port": self.destination_port,
             "protocol": self.protocol,
-            "timestamp": self.timestamp,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
             "anomaly_score": self.anomaly_score,
             **self.attack_scores,
         }
 
     @staticmethod
-    def from_dict(data: dict,timestamp_template: str | None = None,) -> "FlowEvent":
+    def from_dict(data: dict) -> "FlowEvent":
         return FlowEvent(
             flow_id=data["flow_id"],
             source_ip=data["source_ip"],
@@ -64,9 +54,9 @@ class FlowEvent:
             destination_ip=data["destination_ip"],
             destination_port=data["destination_port"],
             protocol=data["protocol"],
-            timestamp=data["timestamp"],
+            start_time=data["start_time"],
+            end_time=data["end_time"],
             anomaly_score=data["anomaly_score"],
-            timestamp_template=timestamp_template,
             attack_scores={
                 k: v
                 for k, v in data.items()
@@ -78,14 +68,15 @@ class FlowEvent:
                     "destination_ip",
                     "destination_port",
                     "protocol",
-                    "timestamp",
+                    "start_time",
+                    "end_time",
                     "anomaly_score",
                 }
-            },
+            }
         )
 
     @staticmethod
-    def from_str(string: str, timestamp_template: str | None = None,) -> "FlowEvent":
+    def from_str(string: str) -> "FlowEvent":
         parts = string.strip("[]").split(", ")
         data = {}
         for part in parts:
@@ -98,11 +89,11 @@ class FlowEvent:
             destination_ip=data["destination_ip"],
             destination_port=data["destination_port"],
             protocol=data["protocol"],
-            timestamp=data["timestamp"],
-            anomaly_score=data["anomaly_score"],
-            timestamp_template=timestamp_template,
+            start_time=datetime.fromisoformat(data["start_time"]),
+            end_time=datetime.fromisoformat(data["end_time"]),
+            anomaly_score=float(data["anomaly_score"]),
             attack_scores={
-                k: v
+                k: float(v)
                 for k, v in data.items()
                 if k
                 not in {
@@ -112,7 +103,8 @@ class FlowEvent:
                     "destination_ip",
                     "destination_port",
                     "protocol",
-                    "timestamp",
+                    "start_time",
+                    "end_time",
                     "anomaly_score",
                 }
             },
