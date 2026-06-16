@@ -11,13 +11,10 @@ class AttackMapper:
 
     def map(self, event: FlowEvent) -> AttackType | None:
         result = None
-        if len(event.attack_scores) != len(self.attack_dict):
+        if set(event.attack_scores.keys()) != set(self.attack_dict.keys()):
             raise RuntimeError(
                 "provided flow event does not define the same number of attacks")
         for attack, score in event.attack_scores.items():
-            if attack not in self.attack_dict:
-                raise RuntimeError(
-                    "Found attack not defined in provided types")
             if not result:
                 if score > self.threshold:
                     result = attack

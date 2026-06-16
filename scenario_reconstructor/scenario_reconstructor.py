@@ -88,6 +88,11 @@ class Exploit:
         self.anomaly_score = anomaly_score
         self.cardinality = 1
 
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, Exploit):
+            return False
+        return self.attack_type == value.attack_type and self.source_ip == value.source_ip and self.source_port == value.source_port and self.destination_ip == value.destination_ip and self.protocol == value.protocol and self.start_time == value.start_time and self.end_time == value.end_time and self.density == value.density and self.anomaly_score == value.anomaly_score and self.cardinality == value.cardinality
+
     def set_cardinality(self, cardinality: int):
         self.cardinality = cardinality
 
@@ -123,22 +128,20 @@ class Exploit:
 
 class ExploitRequirement:
 
-    def __init__(self, attack_type: AttackType, acceptable_source_ips: list[str], acceptable_destination_ip: str, min_start_time: datetime, max_end_time: datetime):
+    def __init__(self, attack_type: AttackType, acceptable_source_ips: list[str], acceptable_destination_ip: str):
         self.attack_type = attack_type
         self.acceptable_source_ips = acceptable_source_ips
         self.acceptable_destination_ip = acceptable_destination_ip
-        self.min_start_time = min_start_time
-        self.max_end_time = max_end_time
 
     def __eq__(self, value: object) -> bool:
         if not isinstance(value, ExploitRequirement):
             return False
-        return self.attack_type == value.attack_type and set(self.acceptable_source_ips) == set(value.acceptable_source_ips) and self.acceptable_destination_ip == value.acceptable_destination_ip and self.min_start_time == value.min_start_time and self.max_end_time == value.max_end_time
+        return self.attack_type == value.attack_type and set(self.acceptable_source_ips) == set(value.acceptable_source_ips) and self.acceptable_destination_ip == value.acceptable_destination_ip
 
     def __hash__(self) -> int:
         src_ips_hash = sum(hash(src_ips)
                            for src_ips in self.acceptable_source_ips)
-        return hash(hash(self.attack_type)+src_ips_hash+hash(self.acceptable_destination_ip)+hash(self.min_start_time)+hash(self.max_end_time))
+        return hash(hash(self.attack_type)+src_ips_hash+hash(self.acceptable_destination_ip))
 
 
 class StarNetworkAttackGraphBasedScenarioReconstructor:
@@ -181,26 +184,6 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
                 return False
 
         return True
-    
-    def check_timing(self, exploit: Exploit)-> bool:
-        last_flow_time = datetime.now()
-        updated = False
-
-        for exploit_id in self.exploits_dict.keys():
-            if exploit.destination_ip == exploit_id.split('-')[1] and self.exploits_dict[exploit_id][-1].end_time < last_flow_time:
-                last_flow_time = self.exploits_dict[exploit_id][-1].end_time
-                updated = True
-
-        for exploit_id in self.exploits_dict.keys():
-            if exploit.source_ip == exploit_id.split('-')[1] and self.exploits_dict[exploit_id][-1].end_time < last_flow_time:
-                last_flow_time = self.exploits_dict[exploit_id][-1].end_time
-                updated = True
-
-        if not updated:
-            last_flow_time = datetime.min
-
-        return exploit.start_time > last_flow_time
-
 
     def compute_requirements(self, exploit: Exploit) -> set[ExploitRequirement] | None:
 
@@ -288,25 +271,9 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
                     acceptable_source_ips.append(ip_addr)
 
             if len(acceptable_source_ips) > 0:
-                last_update_time = datetime.now()
-                updated = False
-
-                for exploit_id in self.exploits_dict.keys():
-                    if red_ip == exploit_id.split('-')[1] and self.exploits_dict[exploit_id][-1].end_time < last_update_time:
-                        last_update_time = self.exploits_dict[exploit_id][-1].end_time
-                        updated = True
-
-                for ip_addr in acceptable_source_ips:
-                    for exploit_id in self.exploits_dict.keys():
-                        if ip_addr == exploit_id.split('-')[1] and self.exploits_dict[exploit_id][-1].end_time < last_update_time:
-                            last_update_time = self.exploits_dict[exploit_id][-1].end_time
-                            updated = True
-
-                if not updated:
-                    last_update_time = datetime.min
 
                 result.add(ExploitRequirement(attack_type, acceptable_source_ips,
-                           red_ip, last_update_time, exploit.start_time))
+                           red_ip))
 
         return result
 

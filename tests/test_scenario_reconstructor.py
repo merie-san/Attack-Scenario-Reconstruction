@@ -128,36 +128,31 @@ class TestExploitRequirements(unittest.TestCase):
                                   TestHostCompromissionAttributeImplementation.HOST_DISCOVERED})
         self.attack2 = AttackType("port_scanning", {Preconditions({TestHostCompromissionAttributeImplementation.HOST_DISCOVERED}, False), Preconditions(
             {TestHostCompromissionAttributeImplementation.HOST_COMPROMISED}, True)}, {TestHostCompromissionAttributeImplementation.PORT_SCANNED})
-        self.requirement1 = ExploitRequirement(self.attack1, ["10.0.0.5"], "10.0.0.1", datetime.min, datetime(
-            2026, 6, 10, 10, 30))
+        self.requirement1 = ExploitRequirement(
+            self.attack1, ["10.0.0.5"], "10.0.0.1")
 
     def test_eq(self):
-        self.assertEqual(self.requirement1, ExploitRequirement(self.attack1, ["10.0.0.5"], "10.0.0.1", datetime.min, datetime(
-            2026, 6, 10, 10, 30)))
-        self.assertNotEqual(self.requirement1,  ExploitRequirement(self.attack2, ["10.0.0.5"], "10.0.0.1", datetime.min, datetime(
-            2026, 6, 10, 10, 30)))
-        self.assertNotEqual(self.requirement1,  ExploitRequirement(self.attack1, ["10.0.0.3"], "10.0.0.1", datetime.min, datetime(
-            2026, 6, 10, 10, 30)))
-        self.assertNotEqual(self.requirement1,  ExploitRequirement(self.attack1, ["10.0.0.5"], "10.0.0.3", datetime.min, datetime(
-            2026, 6, 10, 10, 30)))
-        self.assertNotEqual(self.requirement1,  ExploitRequirement(self.attack1, ["10.0.0.5"], "10.0.0.1", datetime(2025, 12, 1), datetime(
-            2026, 6, 10, 10, 30)))
-        self.assertNotEqual(self.requirement1,  ExploitRequirement(self.attack1, ["10.0.0.5"], "10.0.0.1", datetime.min, datetime(
-            2027, 6, 10, 10, 30)))
-        self.assertNotEqual(self.requirement1,  ExploitRequirement(self.attack2, ["10.0.0.30"], "10.0.0.0", datetime(2000, 12, 6), datetime(
-            2026, 6, 28, 10, 30)))
+        self.assertEqual(self.requirement1, ExploitRequirement(
+            self.attack1, ["10.0.0.5"], "10.0.0.1"))
+        self.assertNotEqual(self.requirement1,  ExploitRequirement(
+            self.attack2, ["10.0.0.5"], "10.0.0.1"))
+        self.assertNotEqual(self.requirement1,  ExploitRequirement(
+            self.attack1, ["10.0.0.3"], "10.0.0.1"))
+        self.assertNotEqual(self.requirement1,  ExploitRequirement(
+            self.attack1, ["10.0.0.5"], "10.0.0.3"))
+        self.assertNotEqual(self.requirement1,  ExploitRequirement(
+            self.attack2, ["10.0.0.30"], "10.0.0.0"))
         new_requirement = ExploitRequirement(self.attack1, [
-                                             "10.0.0.0", "10.0.0.3"], "10.0.0.1", datetime.min, datetime(2026, 6, 10, 10, 30))
+                                             "10.0.0.0", "10.0.0.3"], "10.0.0.1")
         self.assertEqual(new_requirement, ExploitRequirement(self.attack1, [
-                         "10.0.0.0", "10.0.0.3"], "10.0.0.1", datetime.min, datetime(2026, 6, 10, 10, 30)))
+                         "10.0.0.0", "10.0.0.3"], "10.0.0.1"))
         self.assertEqual(new_requirement, ExploitRequirement(self.attack1, [
-                         "10.0.0.3", "10.0.0.0"], "10.0.0.1", datetime.min, datetime(2026, 6, 10, 10, 30)))
+                         "10.0.0.3", "10.0.0.0"], "10.0.0.1"))
         self.assertNotEqual(new_requirement, ExploitRequirement(self.attack1, [
-                            "10.0.0.3", "10.0.0.0", "10.0.0.255"], "10.0.0.1", datetime.min, datetime(2026, 6, 10, 10, 30)))
+                            "10.0.0.3", "10.0.0.0", "10.0.0.255"], "10.0.0.1"))
 
     def test_hash(self):
-        self.assertEqual(hash(self.requirement1), hash(hash(self.attack1)+hash("10.0.0.5")+hash("10.0.0.1")+hash(datetime.min)+hash(datetime(
-            2026, 6, 10, 10, 30))))
+        self.assertEqual(hash(self.requirement1), hash(hash(self.attack1)+hash("10.0.0.5")+hash("10.0.0.1")))
 
 
 class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
@@ -300,8 +295,8 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
         assert requirements is not None
         self.assertEqual(len(requirements), 1)
         req = requirements.pop()
-        self.assertEqual(req, ExploitRequirement(self.attack1, ["10.0.0.5"], "10.0.0.1", datetime.min, datetime(
-            2026, 6, 10, 10, 30)))
+        self.assertEqual(req, ExploitRequirement(
+            self.attack1, ["10.0.0.5"], "10.0.0.1"))
         exploit2 = Exploit(self.attack1, "10.0.0.2", "50000", "10.0.0.1", "40", "6", datetime(
             2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8, 1)
         self.scenario_reconstructor.host_dict["10.0.0.2"]._compromission_attributes.add(
@@ -312,8 +307,8 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
         assert requirements is not None
         self.assertEqual(len(requirements), 1)
         req = requirements.pop()
-        self.assertEqual(req, ExploitRequirement(self.attack3, ["10.0.0.5"], "10.0.0.2", datetime.min, datetime(
-            2026, 6, 10, 10, 30)))
+        self.assertEqual(req, ExploitRequirement(
+            self.attack3, ["10.0.0.5"], "10.0.0.2"))
 
     def test_compute_requirements_multiple_blue_hosts(self):
         self.scenario_reconstructor.host_dict["10.0.0.3"] = Host("10.0.0.3")
@@ -327,8 +322,8 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
         self.assertIsNotNone(requirements)
         assert requirements is not None
         self.assertEqual(len(requirements), 1)
-        self.assertIn(ExploitRequirement(self.attack1, ["10.0.0.5", "10.0.0.3"], "10.0.0.1", datetime.min, datetime(
-            2026, 6, 10, 10, 30)), requirements)
+        self.assertIn(ExploitRequirement(
+            self.attack1, ["10.0.0.5", "10.0.0.3"], "10.0.0.1"), requirements)
         exploit2 = Exploit(self.attack1, "10.0.0.2", "50000", "10.0.0.1", "40", "6", datetime(
             2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8, 1)
         self.scenario_reconstructor.host_dict["10.0.0.2"]._compromission_attributes.add(
@@ -338,8 +333,8 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
         self.assertIsNotNone(requirements)
         assert requirements is not None
         self.assertEqual(len(requirements), 1)
-        self.assertIn(ExploitRequirement(self.attack3, ["10.0.0.5", "10.0.0.3"], "10.0.0.2", datetime.min, datetime(
-            2026, 6, 10, 10, 30)), requirements)
+        self.assertIn(ExploitRequirement(
+            self.attack3, ["10.0.0.5", "10.0.0.3"], "10.0.0.2"), requirements)
 
     def test_compute_requirements_multiple_green_attacks(self):
         new_attack = AttackType("metasploit_port_scan", {Preconditions({TestHostCompromissionAttributeImplementation.HOST_COMPROMISED}, True)}, {
@@ -353,10 +348,10 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
         self.assertIsNotNone(requirements)
         assert requirements is not None
         self.assertEqual(len(requirements), 2)
-        self.assertIn(ExploitRequirement(self.attack1, ["10.0.0.5"], "10.0.0.1", datetime.min, datetime(
-            2026, 6, 10, 10, 30)), requirements)
-        self.assertIn(ExploitRequirement(new_attack, ["10.0.0.5"], "10.0.0.1", datetime.min, datetime(
-            2026, 6, 10, 10, 30)), requirements)
+        self.assertIn(ExploitRequirement(
+            self.attack1, ["10.0.0.5"], "10.0.0.1"), requirements)
+        self.assertIn(ExploitRequirement(
+            new_attack, ["10.0.0.5"], "10.0.0.1"), requirements)
 
         exploit2 = Exploit(self.attack1, "10.0.0.2", "50000", "10.0.0.3", "40", "6", datetime(
             2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8, 1)
@@ -372,10 +367,10 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
         self.assertIsNotNone(requirements)
         assert requirements is not None
         self.assertEqual(len(requirements), 2)
-        self.assertIn(ExploitRequirement(self.attack3, ["10.0.0.5", "10.0.0.1"], "10.0.0.2", datetime.min, datetime(
-            2026, 6, 10, 10, 30)), requirements)
-        self.assertIn(ExploitRequirement(self.attack4, ["10.0.0.5", "10.0.0.1"], "10.0.0.2", datetime.min, datetime(
-            2026, 6, 10, 10, 30)), requirements)
+        self.assertIn(ExploitRequirement(
+            self.attack3, ["10.0.0.5", "10.0.0.1"], "10.0.0.2"), requirements)
+        self.assertIn(ExploitRequirement(
+            self.attack4, ["10.0.0.5", "10.0.0.1"], "10.0.0.2"), requirements)
 
     def test_compute_requirements_destination_time(self):
         exploit = Exploit(self.attack3, "10.0.0.1", "50000", "10.0.0.2", "50", "6", datetime(
@@ -395,7 +390,7 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
         self.assertEqual(len(requirements), 1)
         req = requirements.pop()
         self.assertEqual(req, ExploitRequirement(self.attack2, [
-                         "10.0.0.1", "10.0.0.5"], "10.0.0.2", datetime(2026, 6, 1, 7), datetime(2026, 6, 1, 12)))
+                         "10.0.0.1", "10.0.0.5"], "10.0.0.2"))
 
     def test_compute_requirements_source_time(self):
         exploit = Exploit(self.attack2, "10.0.0.1", "50000", "10.0.0.2", "50", "6", datetime(
@@ -415,7 +410,7 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
         self.assertEqual(len(requirements), 1)
         req = requirements.pop()
         self.assertEqual(req, ExploitRequirement(self.attack3, [
-                         "10.0.0.5"], "10.0.0.1", datetime(2026, 6, 1, 7), datetime(2026, 6, 1, 12)))
+                         "10.0.0.5"], "10.0.0.1"))
 
     def test_compute_requirements_multiple_sources_time(self):
         exploit = Exploit(self.attack2, "10.0.0.1", "50000", "10.0.0.2", "50", "6", datetime(
@@ -443,7 +438,7 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
         self.assertEqual(len(requirements), 1)
         req = requirements.pop()
         self.assertEqual(req, ExploitRequirement(self.attack3, [
-                         "10.0.0.5", "10.0.0.3"], "10.0.0.1", datetime(2026, 6, 1, 6, 40), datetime(2026, 6, 1, 12)))
+                         "10.0.0.5", "10.0.0.3"], "10.0.0.1"))
 
     def test_register_network_state(self):
         exploit = Exploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "50", "6", datetime(
@@ -468,14 +463,16 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
             {TestHostCompromissionAttributeImplementation.HOST_DISCOVERED})
         self.scenario_reconstructor.register_network_state(exploit)
         self.scenario_reconstructor.persist_history()
-        self.assertEqual(len(self.scenario_reconstructor.state_sequence),0)
-        self.assertEqual(len(self.scenario_reconstructor.exploit_sequence),0)
+        self.assertEqual(len(self.scenario_reconstructor.state_sequence), 0)
+        self.assertEqual(len(self.scenario_reconstructor.exploit_sequence), 0)
         with open("./states.log", "r") as f:
-            lines=f.readlines()
-            self.assertEqual(len(lines),3)
+            lines = f.readlines()
+            self.assertEqual(len(lines), 3)
             self.assertIn("State(10.0.0.1={}-10.0.0.2={})\n", lines)
             self.assertIn("Exploit(attack_type=host_discovery, source_ip=10.0.0.5, source_port=50000, destination_ip=10.0.0.1, destination_port=50, protocol=6, start_time=2026-06-01T12:00:00, end_time=2026-06-01T13:30:00, anomaly_score=0.8)\n", lines)
-            self.assertIn("State(10.0.0.1={host_discovered}-10.0.0.2={})\n", lines)
+            self.assertIn(
+                "State(10.0.0.1={host_discovered}-10.0.0.2={})\n", lines)
+
 
 if __name__ == '__main__':
     unittest.main()
