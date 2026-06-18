@@ -95,7 +95,9 @@ class TestReconstructionManager(unittest.TestCase):
         self.zero_day = AttackType(
             "zero_day", set(), {TestHostAttributeConc.ATT_2, TestHostAttributeConc.ATT_1})
         self.scenario_reconstructor = StarNetworkAttackGraphBasedScenarioReconstructor(
-            [self.host1, self.host2], ["10.0.0.3"], TestHostAttributeConc, [self.attack1, self.attack2, self.attack3, self.zero_day], "./exploits.log", "./states.log")
+            [self.host1, self.host2], {TestHostAttributeConc.ATT_3, TestHostAttributeConc.ATT_2, TestHostAttributeConc.ATT_1}, TestHostAttributeConc, [self.attack1, self.attack2, self.attack3, self.zero_day], "./exploits.log", "./states.log")
+        self.scenario_reconstructor.seen_external_hosts_dict["10.0.0.3"]=Host("10.0.0.3")
+        self.scenario_reconstructor.seen_external_hosts_dict["10.0.0.3"].update_compromise_attributes({TestHostAttributeConc.ATT_3, TestHostAttributeConc.ATT_2, TestHostAttributeConc.ATT_1})
         self.anomaly_threshold = 0.1
         self.exploit_threshold = 0.5
         self.mapper = AttackMapper(
@@ -129,10 +131,10 @@ class TestReconstructionManager(unittest.TestCase):
             attack_scores={"attack_1": 0.4, "attack_2": 0.9, "attack_3": 0}
         )
         self.reconstruction_manager.accept(flow_event)
-        self.assertEqual(len(self.reconstruction_manager.low_sus_anomalies), 1)
+        self.assertEqual(len(self.reconstruction_manager.suspect_list), 1)
         self.assertIn(Exploit(self.attack2, "10.0.0.3", "8080", "10.0.0.1", "443", "6",
                               datetime(2023, 1, 1, 12),
-                              datetime(2023, 1, 2, 2), 0.2, 1), self.reconstruction_manager.low_sus_anomalies)
+                              datetime(2023, 1, 2, 2), 0.2, 1), self.reconstruction_manager.suspect_list)
 
     def test_accept_event_discarted(self):
         flow_event = FlowEvent(
@@ -148,7 +150,7 @@ class TestReconstructionManager(unittest.TestCase):
             attack_scores={"attack_1": 0.4, "attack_2": 0.9, "attack_3": 0}
         )
         self.reconstruction_manager.accept(flow_event)
-        self.assertEqual(len(self.reconstruction_manager.low_sus_anomalies), 0)
+        self.assertEqual(len(self.reconstruction_manager.suspect_list), 0)
 
     def test_accept_event_compatible(self):
         flow_event = FlowEvent(
@@ -171,7 +173,7 @@ class TestReconstructionManager(unittest.TestCase):
             len(self.scenario_reconstructor.exploits_dict[exploit.get_exploit_id()]), 1)
         self.assertIn(
             exploit, self.scenario_reconstructor.exploits_dict[exploit.get_exploit_id()])
-        self.assertEqual(self.scenario_reconstructor.host_dict["10.0.0.1"].get_compromission_attributes(), {
+        self.assertEqual(self.scenario_reconstructor.host_dict["10.0.0.1"].get_compromise_attributes(), {
                          TestHostAttributeConc.ATT_2})
         self.assertEqual(
             self.scenario_reconstructor.exploit_sequence[-1], exploit)
@@ -251,7 +253,7 @@ class TestReconstructionManager(unittest.TestCase):
         old_exploit = Exploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
                               datetime(2023, 1, 1, 11),
                               datetime(2023, 1, 1, 11, 35), 0.2, 1)
-        self.reconstruction_manager.low_sus_anomalies.append(old_exploit)
+        self.reconstruction_manager.suspect_list.append(old_exploit)
         self.reconstruction_manager.accept(flow_event)
         self.assertTrue(os.path.exists("./fns.log"))
         with open("./fns.log", "r") as fnlog:
@@ -284,10 +286,10 @@ class TestReconstructionManager(unittest.TestCase):
         old_exploit_4 = Exploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
                                 datetime(2023, 1, 1, 11 ),
                                 datetime(2023, 1, 2), 0.3, 1)        
-        self.reconstruction_manager.low_sus_anomalies.append(old_exploit_1)
-        self.reconstruction_manager.low_sus_anomalies.append(old_exploit_2)
-        self.reconstruction_manager.low_sus_anomalies.append(old_exploit_3)
-        self.reconstruction_manager.low_sus_anomalies.append(old_exploit_4)
+        self.reconstruction_manager.suspect_list.append(old_exploit_1)
+        self.reconstruction_manager.suspect_list.append(old_exploit_2)
+        self.reconstruction_manager.suspect_list.append(old_exploit_3)
+        self.reconstruction_manager.suspect_list.append(old_exploit_4)
         self.reconstruction_manager.accept(flow_event)
         self.assertTrue(os.path.exists("./fns.log"))
         with open("./fns.log", "r") as fnlog:

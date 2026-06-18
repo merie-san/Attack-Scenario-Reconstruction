@@ -8,18 +8,18 @@ class HostAttribute(Enum):
 
 class Preconditions:
 
-    def __init__(self, compromission_attributes: set[HostAttribute], targets_source: bool):
+    def __init__(self, compromise_attributes: set[HostAttribute], targets_source: bool):
         self.targets_source = targets_source
-        self.compromission_attributes = compromission_attributes
+        self.compromise_attributes = compromise_attributes
 
     def __eq__(self, value: object) -> bool:
         if not isinstance(value, Preconditions):
             return False
-        return self.targets_source == value.targets_source and self.compromission_attributes == value.compromission_attributes
+        return self.targets_source == value.targets_source and self.compromise_attributes == value.compromise_attributes
 
     def __hash__(self) -> int:
         to_hash = 0 if self.targets_source else 1
-        for att in self.compromission_attributes:
+        for att in self.compromise_attributes:
             to_hash += hash(att)
 
         return hash(to_hash)
@@ -29,13 +29,13 @@ class Host:
 
     def __init__(self, ip_address: str):
         self.ip_address = ip_address
-        self._compromission_attributes = set()
+        self._compromise_attributes = set()
 
-    def update_compromission_attributes(self, attributes: set[HostAttribute]):
-        self._compromission_attributes.update(attributes)
+    def update_compromise_attributes(self, attributes: set[HostAttribute]):
+        self._compromise_attributes.update(attributes)
 
-    def get_compromission_attributes(self) -> set[HostAttribute]:
-        return self._compromission_attributes
+    def get_compromise_attributes(self) -> set[HostAttribute]:
+        return self._compromise_attributes
 
 
 class AttackType:
@@ -146,13 +146,10 @@ class ExploitRequirement:
 
 class StarNetworkAttackGraphBasedScenarioReconstructor:
 
-    def __init__(self, hosts: list[Host], attacker_ips: list[str], host_attributes: type[HostAttribute], attack_types: list[AttackType], exploit_log_path: str, state_log_path: str):
-        self.host_dict = {host.ip_address: host for host in hosts}
-        self.attacker_dict = {attacker_ip: Host(
-            attacker_ip) for attacker_ip in attacker_ips}
-        for host in self.attacker_dict.values():
-            host.update_compromission_attributes(
-                {attribute for attribute in host_attributes})
+    def __init__(self, internal_hosts: list[Host], external_host_attributes: set[HostAttribute], host_attributes: type[HostAttribute], attack_types: list[AttackType], exploit_log_path: str, state_log_path: str):
+        self.host_dict = {host.ip_address: host for host in internal_hosts}
+        self.external_host_attributes = external_host_attributes
+        self.seen_external_hosts_dict = {}
         self.attack_types = attack_types
         self.exploits_dict = {}
         self.exploit_log_path = exploit_log_path
@@ -165,114 +162,133 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
     def check_preconditions(self, exploit: Exploit) -> bool:
 
         source_preconditions, destination_preconditions = exploit.attack_type.get_preconditions()
-        all_hosts = self.attacker_dict | self.host_dict
-        source_host = all_hosts.get(exploit.source_ip)
-        destination_host = all_hosts.get(exploit.destination_ip)
+        source_host, destination_host = self._obtain_hosts(exploit)
 
-        if not source_host or not destination_host:
-            raise ValueError(
-                f"Precondition defined on unknown ips: {exploit.source_ip} {exploit.destination_ip}")
-
-        source_attributes = source_host.get_compromission_attributes()
+        source_attributes = source_host.get_compromise_attributes()
         for precondition in source_preconditions:
-            if len(source_attributes.intersection(precondition.compromission_attributes)) == 0:
+            if len(source_attributes.intersection(precondition.compromise_attributes)) == 0:
                 return False
 
-        destination_attributes = destination_host.get_compromission_attributes()
+        destination_attributes = destination_host.get_compromise_attributes()
         for precondition in destination_preconditions:
-            if len(destination_attributes.intersection(precondition.compromission_attributes)) == 0:
+            if len(destination_attributes.intersection(precondition.compromise_attributes)) == 0:
                 return False
 
         return True
 
+    def _obtain_hosts(self, exploit: Exploit):
+        source_host = self.host_dict.get(exploit.source_ip)
+        destination_host = self.host_dict.get(exploit.destination_ip)
+
+        if not source_host and not destination_host:
+            raise ValueError(
+                f"Precondition defined on two external ips: {exploit.source_ip} {exploit.destination_ip}")
+
+        if not source_host:
+            if exploit.source_ip in self.seen_external_hosts_dict:
+                source_host = self.seen_external_hosts_dict[exploit.source_ip]
+            else:
+                source_host = Host(exploit.source_ip)
+                source_host.update_compromise_attributes(
+                    self.external_host_attributes)
+                self.seen_external_hosts_dict[exploit.source_ip] = source_host
+
+        if not destination_host:
+            if exploit.destination_ip in self.seen_external_hosts_dict:
+                destination_host = self.seen_external_hosts_dict[exploit.destination_ip]
+            else:
+                destination_host = Host(exploit.source_ip)
+                destination_host.update_compromise_attributes(
+                    self.external_host_attributes)
+                self.seen_external_hosts_dict[exploit.destination_ip] = destination_host
+
+        return source_host, destination_host
+
     def compute_requirements(self, exploit: Exploit) -> set[ExploitRequirement] | None:
 
-        all_hosts = self.attacker_dict | self.host_dict
         source_ip = exploit.source_ip
-        source_host = all_hosts.get(source_ip)
         destination_ip = exploit.destination_ip
-        destination_host = all_hosts.get(destination_ip)
 
-        if not source_host or not destination_host:
-            raise ValueError(
-                f"Precondition defined on unknown ips: {source_ip} {destination_ip}")
+        source_host, destination_host = self._obtain_hosts(exploit)
 
         source_preconditions, destination_preconditions = exploit.attack_type.get_preconditions()
 
-        unsat_src_conditions = set(source_preconditions)
-        unsat_dst_conditions = set(destination_preconditions)
+        complete_host_dict=self.host_dict | self.seen_external_hosts_dict
 
-        source_attributes = source_host.get_compromission_attributes()
+        red_src_conditions = set(source_preconditions)
+        red_dst_conditions = set(destination_preconditions)
+
+        source_attributes = source_host.get_compromise_attributes()
         for condition in source_preconditions:
-            if len(source_attributes.intersection(condition.compromission_attributes)) > 0:
-                unsat_src_conditions.remove(condition)
+            if len(source_attributes.intersection(condition.compromise_attributes)) > 0:
+                red_src_conditions.remove(condition)
 
-        destination_attributes = destination_host.get_compromission_attributes()
+        destination_attributes = destination_host.get_compromise_attributes()
         for condition in destination_preconditions:
-            if len(destination_attributes.intersection(condition.compromission_attributes)) > 0:
-                unsat_dst_conditions.remove(condition)
+            if len(destination_attributes.intersection(condition.compromise_attributes)) > 0:
+                red_dst_conditions.remove(condition)
 
-        if len(unsat_dst_conditions) > 0 and len(unsat_src_conditions) > 0:
+        if len(red_dst_conditions) > 0 and len(red_src_conditions) > 0:
             return None
 
-        if len(unsat_dst_conditions) == 0 and len(unsat_src_conditions) == 0:
+        if len(red_dst_conditions) == 0 and len(red_src_conditions) == 0:
             return set()
 
         red_ip = ""
-        if len(unsat_src_conditions) > 0:
+        if len(red_src_conditions) > 0:
             red_ip = source_ip
-        elif len(unsat_dst_conditions) > 0:
+        elif len(red_dst_conditions) > 0:
             red_ip = destination_ip
-        red_host = all_hosts[red_ip]
+        red_host = complete_host_dict[red_ip]
 
         green_attacks = []
         for attack_type in self.attack_types:
-            unsat_conditions = unsat_dst_conditions.union(unsat_src_conditions)
-            unsat_cond_copy = set(unsat_conditions)
-            for condition in unsat_conditions:
-                if len(attack_type.postconditions.intersection(condition.compromission_attributes)) > 0:
-                    unsat_cond_copy.remove(condition)
-            if len(unsat_cond_copy) == 0:
+            red_conditions = red_dst_conditions.union(red_src_conditions)
+            red_cond_copy = set(red_conditions)
+            for condition in red_conditions:
+                if len(attack_type.postconditions.intersection(condition.compromise_attributes)) > 0:
+                    red_cond_copy.remove(condition)
+            if len(red_cond_copy) == 0:
                 green_attacks.append(attack_type)
 
         if len(green_attacks) == 0:
             return None
 
-        blue_ip_green_attack_dict = {addr: []
-                                     for addr in all_hosts.keys()}
+        blue_dict = {addr: []
+                     for addr in complete_host_dict.keys()}
 
-        for ip_addr, host in all_hosts.items():
+        for ip_addr, host in complete_host_dict.items():
             for attack_type in green_attacks:
                 not_statisfied = False
                 blue_host_conditions, red_host_conditions = attack_type.get_preconditions()
                 for precondition in blue_host_conditions:
-                    if len(host.get_compromission_attributes().intersection(precondition.compromission_attributes)) == 0:
+                    if len(host.get_compromise_attributes().intersection(precondition.compromise_attributes)) == 0:
                         not_statisfied = True
                         break
                 if not not_statisfied:
                     for precondition in red_host_conditions:
-                        if len(red_host.get_compromission_attributes().intersection(precondition.compromission_attributes)) == 0:
+                        if len(red_host.get_compromise_attributes().intersection(precondition.compromise_attributes)) == 0:
                             not_statisfied = True
                             break
                 if not not_statisfied:
-                    blue_ip_green_attack_dict[ip_addr].append(attack_type)
+                    blue_dict[ip_addr].append(attack_type)
 
         n = sum(len(final_attacks)
-                for final_attacks in blue_ip_green_attack_dict.values())
+                for final_attacks in blue_dict.values())
 
         if n == 0:
             return None
 
         result = set()
         for attack_type in green_attacks:
-            acceptable_source_ips = []
-            for ip_addr, attacks in blue_ip_green_attack_dict.items():
+            blue_ips = []
+            for ip_addr, attacks in blue_dict.items():
                 if attack_type in attacks:
-                    acceptable_source_ips.append(ip_addr)
+                    blue_ips.append(ip_addr)
 
-            if len(acceptable_source_ips) > 0:
+            if len(blue_ips) > 0:
 
-                result.add(ExploitRequirement(attack_type, acceptable_source_ips,
+                result.add(ExploitRequirement(attack_type, blue_ips,
                            red_ip))
 
         return result
@@ -282,7 +298,7 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
         if not host:
             raise ValueError(
                 f"Postcondition defined on unknown system host: {exploit.destination_ip}")
-        host.update_compromission_attributes(
+        host.update_compromise_attributes(
             exploit.attack_type.postconditions)
 
     def add_exploit(self, exploit: Exploit):
@@ -317,10 +333,10 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
     def get_state_sequence_size(self):
         return len(self.state_sequence)
 
-    def register_network_state(self, exploit: Exploit):
+    def update_network_state(self, exploit: Exploit):
         new_network_state = {}
         for ip_addr, host in self.host_dict.items():
-            new_network_state[ip_addr] = host.get_compromission_attributes()
+            new_network_state[ip_addr] = host.get_compromise_attributes()
         self.state_sequence.append(new_network_state)
         self.exploit_sequence.append(exploit)
 

@@ -4,7 +4,7 @@ from datetime import datetime
 import os
 
 
-class TestHostCompromissionAttributeImplementation(HostAttribute):
+class TestHostCompromiseAttributeImplementation(HostAttribute):
     HOST_DISCOVERED = "host_discovered"
     PORT_SCANNED = "port_scanned"
     HOST_VULNERABLE = "host_vulnerable"
@@ -15,26 +15,26 @@ class TestHost(unittest.TestCase):
 
     def test_update_compromission_attributes(self):
         host = Host("10.0.0.1")
-        self.assertEqual(len(host._compromission_attributes), 0)
-        host.update_compromission_attributes(
-            {TestHostCompromissionAttributeImplementation.HOST_DISCOVERED})
-        self.assertIn(TestHostCompromissionAttributeImplementation.HOST_DISCOVERED,
-                      host._compromission_attributes)
+        self.assertEqual(len(host._compromise_attributes), 0)
+        host.update_compromise_attributes(
+            {TestHostCompromiseAttributeImplementation.HOST_DISCOVERED})
+        self.assertIn(TestHostCompromiseAttributeImplementation.HOST_DISCOVERED,
+                      host._compromise_attributes)
 
 
 class TestAttackType(unittest.TestCase):
 
     def setUp(self):
         self.attack_type = AttackType("nmap_port_scan", set(), set(
-            [TestHostCompromissionAttributeImplementation.HOST_DISCOVERED]))
+            [TestHostCompromiseAttributeImplementation.HOST_DISCOVERED]))
 
     def test_eq(self):
         self.assertNotEqual(self.attack_type, AttackType(
             "nmap_port_scan", set(), set()))
         self.assertNotEqual(self.attack_type, AttackType(
-            "host_scan", set(), set([TestHostCompromissionAttributeImplementation.HOST_DISCOVERED])))
+            "host_scan", set(), set([TestHostCompromiseAttributeImplementation.HOST_DISCOVERED])))
         self.assertEqual(self.attack_type, AttackType("nmap_port_scan", set(), set(
-            [TestHostCompromissionAttributeImplementation.HOST_DISCOVERED])))
+            [TestHostCompromiseAttributeImplementation.HOST_DISCOVERED])))
 
     def test_str(self):
         self.assertEqual(str(self.attack_type), "nmap_port_scan")
@@ -43,15 +43,15 @@ class TestAttackType(unittest.TestCase):
         src_cond, dst_cond = self.attack_type.get_preconditions()
         self.assertEqual(len(src_cond), 0)
         self.assertEqual(len(dst_cond), 0)
-        new_attack = AttackType("nmap_port_scan", {Preconditions({TestHostCompromissionAttributeImplementation.HOST_COMPROMISED}, True), Preconditions({TestHostCompromissionAttributeImplementation.PORT_SCANNED}, False)}, set(
-            [TestHostCompromissionAttributeImplementation.HOST_DISCOVERED]))
+        new_attack = AttackType("nmap_port_scan", {Preconditions({TestHostCompromiseAttributeImplementation.HOST_COMPROMISED}, True), Preconditions({TestHostCompromiseAttributeImplementation.PORT_SCANNED}, False)}, set(
+            [TestHostCompromiseAttributeImplementation.HOST_DISCOVERED]))
         src_cond, dst_cond = new_attack.get_preconditions()
         self.assertEqual(len(src_cond), 1)
         self.assertIn(Preconditions(
-            {TestHostCompromissionAttributeImplementation.HOST_COMPROMISED}, True), src_cond)
+            {TestHostCompromiseAttributeImplementation.HOST_COMPROMISED}, True), src_cond)
         self.assertEqual(len(dst_cond), 1)
         self.assertIn(Preconditions(
-            {TestHostCompromissionAttributeImplementation.PORT_SCANNED}, False), dst_cond)
+            {TestHostCompromiseAttributeImplementation.PORT_SCANNED}, False), dst_cond)
 
 
 class TestExploit(unittest.TestCase):
@@ -124,10 +124,10 @@ class TestExploit(unittest.TestCase):
 class TestExploitRequirements(unittest.TestCase):
 
     def setUp(self) -> None:
-        self.attack1 = AttackType("host_discovery", {Preconditions({TestHostCompromissionAttributeImplementation.HOST_COMPROMISED}, True)}, {
-                                  TestHostCompromissionAttributeImplementation.HOST_DISCOVERED})
-        self.attack2 = AttackType("port_scanning", {Preconditions({TestHostCompromissionAttributeImplementation.HOST_DISCOVERED}, False), Preconditions(
-            {TestHostCompromissionAttributeImplementation.HOST_COMPROMISED}, True)}, {TestHostCompromissionAttributeImplementation.PORT_SCANNED})
+        self.attack1 = AttackType("host_discovery", {Preconditions({TestHostCompromiseAttributeImplementation.HOST_COMPROMISED}, True)}, {
+                                  TestHostCompromiseAttributeImplementation.HOST_DISCOVERED})
+        self.attack2 = AttackType("port_scanning", {Preconditions({TestHostCompromiseAttributeImplementation.HOST_DISCOVERED}, False), Preconditions(
+            {TestHostCompromiseAttributeImplementation.HOST_COMPROMISED}, True)}, {TestHostCompromiseAttributeImplementation.PORT_SCANNED})
         self.requirement1 = ExploitRequirement(
             self.attack1, ["10.0.0.5"], "10.0.0.1")
 
@@ -152,7 +152,8 @@ class TestExploitRequirements(unittest.TestCase):
                             "10.0.0.3", "10.0.0.0", "10.0.0.255"], "10.0.0.1"))
 
     def test_hash(self):
-        self.assertEqual(hash(self.requirement1), hash(hash(self.attack1)+hash("10.0.0.5")+hash("10.0.0.1")))
+        self.assertEqual(hash(self.requirement1), hash(
+            hash(self.attack1)+hash("10.0.0.5")+hash("10.0.0.1")))
 
 
 class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
@@ -160,16 +161,16 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
     def setUp(self):
         self.host1 = Host("10.0.0.1")
         self.host2 = Host("10.0.0.2")
-        self.attack1 = AttackType("host_discovery", {Preconditions({TestHostCompromissionAttributeImplementation.HOST_COMPROMISED}, True)}, {
-                                  TestHostCompromissionAttributeImplementation.HOST_DISCOVERED})
-        self.attack2 = AttackType("port_scanning", {Preconditions({TestHostCompromissionAttributeImplementation.HOST_DISCOVERED}, False), Preconditions(
-            {TestHostCompromissionAttributeImplementation.HOST_COMPROMISED}, True)}, {TestHostCompromissionAttributeImplementation.PORT_SCANNED})
-        self.attack3 = AttackType("brute_force", {Preconditions({TestHostCompromissionAttributeImplementation.HOST_COMPROMISED}, True), Preconditions({TestHostCompromissionAttributeImplementation.PORT_SCANNED}, False)}, {
-                                  TestHostCompromissionAttributeImplementation.HOST_COMPROMISED})
-        self.attack4 = AttackType("vulnerability_exploit", {Preconditions({TestHostCompromissionAttributeImplementation.HOST_COMPROMISED}, True), Preconditions(
-            {TestHostCompromissionAttributeImplementation.PORT_SCANNED}, False), Preconditions({TestHostCompromissionAttributeImplementation.HOST_VULNERABLE}, False)}, {TestHostCompromissionAttributeImplementation.HOST_COMPROMISED})
+        self.attack1 = AttackType("host_discovery", {Preconditions({TestHostCompromiseAttributeImplementation.HOST_COMPROMISED}, True)}, {
+                                  TestHostCompromiseAttributeImplementation.HOST_DISCOVERED})
+        self.attack2 = AttackType("port_scanning", {Preconditions({TestHostCompromiseAttributeImplementation.HOST_DISCOVERED}, False), Preconditions(
+            {TestHostCompromiseAttributeImplementation.HOST_COMPROMISED}, True)}, {TestHostCompromiseAttributeImplementation.PORT_SCANNED})
+        self.attack3 = AttackType("brute_force", {Preconditions({TestHostCompromiseAttributeImplementation.HOST_COMPROMISED}, True), Preconditions({TestHostCompromiseAttributeImplementation.PORT_SCANNED}, False)}, {
+                                  TestHostCompromiseAttributeImplementation.HOST_COMPROMISED})
+        self.attack4 = AttackType("vulnerability_exploit", {Preconditions({TestHostCompromiseAttributeImplementation.HOST_COMPROMISED}, True), Preconditions(
+            {TestHostCompromiseAttributeImplementation.PORT_SCANNED}, False), Preconditions({TestHostCompromiseAttributeImplementation.HOST_VULNERABLE}, False)}, {TestHostCompromiseAttributeImplementation.HOST_COMPROMISED})
         self.scenario_reconstructor = StarNetworkAttackGraphBasedScenarioReconstructor(
-            [self.host1, self.host2], ["10.0.0.5"], TestHostCompromissionAttributeImplementation, [self.attack1, self.attack2, self.attack3, self.attack4], "./exploits.log", "./states.log")
+            [self.host1, self.host2], {TestHostCompromiseAttributeImplementation.PORT_SCANNED, TestHostCompromiseAttributeImplementation.HOST_VULNERABLE, TestHostCompromiseAttributeImplementation.HOST_DISCOVERED, TestHostCompromiseAttributeImplementation.HOST_COMPROMISED}, TestHostCompromiseAttributeImplementation, [self.attack1, self.attack2, self.attack3, self.attack4], "./exploits.log", "./states.log")
 
     def tearDown(self):
         if os.path.exists("./exploits.log"):
@@ -186,7 +187,7 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
             2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8, 1)
         self.assertFalse(
             self.scenario_reconstructor.check_preconditions(exploit))
-        exploit = Exploit(self.attack1, "10.0.0.111", "50000", "10.0.0.2", "40", "6", datetime(
+        exploit = Exploit(self.attack1, "10.0.0.111", "50000", "10.0.0.23", "40", "6", datetime(
             2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8, 1)
         with self.assertRaises(ValueError):
             self.scenario_reconstructor.check_preconditions(exploit)
@@ -195,7 +196,7 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
         exploit = Exploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
             2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8, 1)
         self.scenario_reconstructor.set_postconditions(exploit)
-        self.assertEqual(self.scenario_reconstructor.host_dict["10.0.0.1"].get_compromission_attributes(
+        self.assertEqual(self.scenario_reconstructor.host_dict["10.0.0.1"].get_compromise_attributes(
         ), exploit.attack_type.postconditions)
 
     def test_add_exploit(self):
@@ -259,14 +260,11 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
                       self.scenario_reconstructor.aggregated_exploits)
 
     def test_check_exploit_requirements_invalid_ips(self):
-        exploit1 = Exploit(self.attack1, "10.0.0.5", "50000", "10.0.0.23", "40", "6", datetime(
+        exploit1 = Exploit(self.attack1, "10.0.0.53", "50000", "10.0.0.23", "40", "6", datetime(
             2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8, 1)
-        with self.assertRaises(ValueError, msg="Precondition defined on unknown hosts: 10.0.0.5 10.0.0.23"):
+        with self.assertRaises(ValueError, msg="Precondition defined on two external ips: 10.0.0.53 10.0.0.23"):
             self.scenario_reconstructor.check_preconditions(exploit1)
-        exploit2 = Exploit(self.attack1, "10.0.0.51", "50000", "10.0.0.2", "40", "6", datetime(
-            2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8, 1)
-        with self.assertRaises(ValueError, msg="Precondition defined on unknown hosts: 10.0.0.51 10.0.0.2"):
-            self.scenario_reconstructor.check_preconditions(exploit2)
+
 
     def test_compute_requirements_edge_cases(self):
         exploit1 = Exploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
@@ -299,8 +297,8 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
             self.attack1, ["10.0.0.5"], "10.0.0.1"))
         exploit2 = Exploit(self.attack1, "10.0.0.2", "50000", "10.0.0.1", "40", "6", datetime(
             2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8, 1)
-        self.scenario_reconstructor.host_dict["10.0.0.2"]._compromission_attributes.add(
-            TestHostCompromissionAttributeImplementation.PORT_SCANNED)
+        self.scenario_reconstructor.host_dict["10.0.0.2"]._compromise_attributes.add(
+            TestHostCompromiseAttributeImplementation.PORT_SCANNED)
         requirements = self.scenario_reconstructor.compute_requirements(
             exploit2)
         self.assertIsNotNone(requirements)
@@ -312,8 +310,8 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
 
     def test_compute_requirements_multiple_blue_hosts(self):
         self.scenario_reconstructor.host_dict["10.0.0.3"] = Host("10.0.0.3")
-        self.scenario_reconstructor.host_dict["10.0.0.3"].update_compromission_attributes(
-            {TestHostCompromissionAttributeImplementation.HOST_COMPROMISED})
+        self.scenario_reconstructor.host_dict["10.0.0.3"].update_compromise_attributes(
+            {TestHostCompromiseAttributeImplementation.HOST_COMPROMISED})
 
         exploit1 = Exploit(self.attack2, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
             2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8, 1)
@@ -326,8 +324,8 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
             self.attack1, ["10.0.0.5", "10.0.0.3"], "10.0.0.1"), requirements)
         exploit2 = Exploit(self.attack1, "10.0.0.2", "50000", "10.0.0.1", "40", "6", datetime(
             2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8, 1)
-        self.scenario_reconstructor.host_dict["10.0.0.2"]._compromission_attributes.add(
-            TestHostCompromissionAttributeImplementation.PORT_SCANNED)
+        self.scenario_reconstructor.host_dict["10.0.0.2"]._compromise_attributes.add(
+            TestHostCompromiseAttributeImplementation.PORT_SCANNED)
         requirements = self.scenario_reconstructor.compute_requirements(
             exploit2)
         self.assertIsNotNone(requirements)
@@ -337,8 +335,8 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
             self.attack3, ["10.0.0.5", "10.0.0.3"], "10.0.0.2"), requirements)
 
     def test_compute_requirements_multiple_green_attacks(self):
-        new_attack = AttackType("metasploit_port_scan", {Preconditions({TestHostCompromissionAttributeImplementation.HOST_COMPROMISED}, True)}, {
-                                TestHostCompromissionAttributeImplementation.HOST_DISCOVERED, TestHostCompromissionAttributeImplementation.PORT_SCANNED})
+        new_attack = AttackType("metasploit_port_scan", {Preconditions({TestHostCompromiseAttributeImplementation.HOST_COMPROMISED}, True)}, {
+                                TestHostCompromiseAttributeImplementation.HOST_DISCOVERED, TestHostCompromiseAttributeImplementation.PORT_SCANNED})
         self.scenario_reconstructor.attack_types.append(new_attack)
 
         exploit1 = Exploit(self.attack2, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
@@ -357,10 +355,10 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
             2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8, 1)
 
         self.scenario_reconstructor.host_dict["10.0.0.3"] = Host("10.0.0.3")
-        self.scenario_reconstructor.host_dict["10.0.0.1"].update_compromission_attributes(
-            {TestHostCompromissionAttributeImplementation.HOST_COMPROMISED})
-        self.scenario_reconstructor.host_dict["10.0.0.2"].update_compromission_attributes(
-            {TestHostCompromissionAttributeImplementation.PORT_SCANNED, TestHostCompromissionAttributeImplementation.HOST_VULNERABLE})
+        self.scenario_reconstructor.host_dict["10.0.0.1"].update_compromise_attributes(
+            {TestHostCompromiseAttributeImplementation.HOST_COMPROMISED})
+        self.scenario_reconstructor.host_dict["10.0.0.2"].update_compromise_attributes(
+            {TestHostCompromiseAttributeImplementation.PORT_SCANNED, TestHostCompromiseAttributeImplementation.HOST_VULNERABLE})
 
         requirements = self.scenario_reconstructor.compute_requirements(
             exploit2)
@@ -372,96 +370,28 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
         self.assertIn(ExploitRequirement(
             self.attack4, ["10.0.0.5", "10.0.0.1"], "10.0.0.2"), requirements)
 
-    def test_compute_requirements_destination_time(self):
-        exploit = Exploit(self.attack3, "10.0.0.1", "50000", "10.0.0.2", "50", "6", datetime(
-            2026, 6, 1, 12), datetime(2026, 6, 1, 13, 30), 0.8, 1)
-        old_exploit = Exploit(self.attack1, "10.0.0.5", "5000", "10.0.0.2", "50", "6", datetime(
-            2026, 6, 1, 6, 30), datetime(2026, 6, 1, 7), 0.7, 1)
-        self.scenario_reconstructor.host_dict["10.0.0.1"].update_compromission_attributes(
-            {TestHostCompromissionAttributeImplementation.HOST_COMPROMISED})
-        self.scenario_reconstructor.host_dict["10.0.0.2"].update_compromission_attributes(
-            {TestHostCompromissionAttributeImplementation.HOST_DISCOVERED})
-        self.scenario_reconstructor.exploits_dict[old_exploit.get_exploit_id(
-        )] = [old_exploit]
-        requirements = self.scenario_reconstructor.compute_requirements(
-            exploit)
-        self.assertIsNotNone(requirements)
-        assert requirements is not None
-        self.assertEqual(len(requirements), 1)
-        req = requirements.pop()
-        self.assertEqual(req, ExploitRequirement(self.attack2, [
-                         "10.0.0.1", "10.0.0.5"], "10.0.0.2"))
-
-    def test_compute_requirements_source_time(self):
-        exploit = Exploit(self.attack2, "10.0.0.1", "50000", "10.0.0.2", "50", "6", datetime(
-            2026, 6, 1, 12), datetime(2026, 6, 1, 13, 30), 0.8, 1)
-        old_exploit = Exploit(self.attack2, "10.0.0.5", "5000", "10.0.0.1", "50", "6", datetime(
-            2026, 6, 1, 6, 30), datetime(2026, 6, 1, 7), 0.7, 1)
-        self.scenario_reconstructor.host_dict["10.0.0.1"].update_compromission_attributes(
-            {TestHostCompromissionAttributeImplementation.PORT_SCANNED})
-        self.scenario_reconstructor.host_dict["10.0.0.2"].update_compromission_attributes(
-            {TestHostCompromissionAttributeImplementation.HOST_DISCOVERED})
-        self.scenario_reconstructor.exploits_dict[old_exploit.get_exploit_id(
-        )] = [old_exploit]
-        requirements = self.scenario_reconstructor.compute_requirements(
-            exploit)
-        self.assertIsNotNone(requirements)
-        assert requirements is not None
-        self.assertEqual(len(requirements), 1)
-        req = requirements.pop()
-        self.assertEqual(req, ExploitRequirement(self.attack3, [
-                         "10.0.0.5"], "10.0.0.1"))
-
-    def test_compute_requirements_multiple_sources_time(self):
-        exploit = Exploit(self.attack2, "10.0.0.1", "50000", "10.0.0.2", "50", "6", datetime(
-            2026, 6, 1, 12), datetime(2026, 6, 1, 13, 30), 0.8, 1)
-        old_exploit1 = Exploit(self.attack2, "10.0.0.5", "5000", "10.0.0.1", "50", "6", datetime(
-            2026, 6, 1, 6, 30), datetime(2026, 6, 1, 7), 0.7, 1)
-        old_exploit2 = Exploit(self.attack2, "10.0.0.3", "5000", "10.0.0.1", "50", "6", datetime(
-            2026, 6, 1, 6, 30), datetime(2026, 6, 1, 6, 40), 0.7, 1)
-        new_host = Host("10.0.0.3")
-        new_host.update_compromission_attributes(
-            {TestHostCompromissionAttributeImplementation.HOST_COMPROMISED})
-        self.scenario_reconstructor.host_dict["10.0.0.3"] = new_host
-        self.scenario_reconstructor.host_dict["10.0.0.1"].update_compromission_attributes(
-            {TestHostCompromissionAttributeImplementation.PORT_SCANNED})
-        self.scenario_reconstructor.host_dict["10.0.0.2"].update_compromission_attributes(
-            {TestHostCompromissionAttributeImplementation.HOST_DISCOVERED})
-        self.scenario_reconstructor.exploits_dict[old_exploit1.get_exploit_id(
-        )] = [old_exploit1]
-        self.scenario_reconstructor.exploits_dict[old_exploit2.get_exploit_id()] = [
-            old_exploit2]
-        requirements = self.scenario_reconstructor.compute_requirements(
-            exploit)
-        self.assertIsNotNone(requirements)
-        assert requirements is not None
-        self.assertEqual(len(requirements), 1)
-        req = requirements.pop()
-        self.assertEqual(req, ExploitRequirement(self.attack3, [
-                         "10.0.0.5", "10.0.0.3"], "10.0.0.1"))
-
     def test_register_network_state(self):
         exploit = Exploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "50", "6", datetime(
             2026, 6, 1, 12), datetime(2026, 6, 1, 13, 30), 0.8, 1)
-        self.scenario_reconstructor.host_dict["10.0.0.1"].update_compromission_attributes(
-            {TestHostCompromissionAttributeImplementation.HOST_DISCOVERED})
-        self.scenario_reconstructor.register_network_state(exploit)
+        self.scenario_reconstructor.host_dict["10.0.0.1"].update_compromise_attributes(
+            {TestHostCompromiseAttributeImplementation.HOST_DISCOVERED})
+        self.scenario_reconstructor.update_network_state(exploit)
         self.assertEqual(len(self.scenario_reconstructor.exploit_sequence), 1)
         self.assertEqual(
             self.scenario_reconstructor.exploit_sequence[0], exploit)
         self.assertEqual(
             len(self.scenario_reconstructor.state_sequence), 2)
         self.assertEqual(self.scenario_reconstructor.state_sequence[1]["10.0.0.1"], {
-                         TestHostCompromissionAttributeImplementation.HOST_DISCOVERED})
+                         TestHostCompromiseAttributeImplementation.HOST_DISCOVERED})
         self.assertEqual(
             self.scenario_reconstructor.state_sequence[1]["10.0.0.2"], set())
 
     def test_persist_history(self):
         exploit = Exploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "50", "6", datetime(
             2026, 6, 1, 12), datetime(2026, 6, 1, 13, 30), 0.8, 1)
-        self.scenario_reconstructor.host_dict["10.0.0.1"].update_compromission_attributes(
-            {TestHostCompromissionAttributeImplementation.HOST_DISCOVERED})
-        self.scenario_reconstructor.register_network_state(exploit)
+        self.scenario_reconstructor.host_dict["10.0.0.1"].update_compromise_attributes(
+            {TestHostCompromiseAttributeImplementation.HOST_DISCOVERED})
+        self.scenario_reconstructor.update_network_state(exploit)
         self.scenario_reconstructor.persist_history()
         self.assertEqual(len(self.scenario_reconstructor.state_sequence), 0)
         self.assertEqual(len(self.scenario_reconstructor.exploit_sequence), 0)
