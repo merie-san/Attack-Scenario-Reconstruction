@@ -3,10 +3,14 @@ from enum import Enum
 from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
+from typing import TypeVar, Generic
 
 
 class HostAttribute(Enum):
     pass
+
+
+T = TypeVar("T", bound=HostAttribute)
 
 
 class Preconditions:
@@ -116,6 +120,11 @@ class Exploit:
     def get_exploit_group_id(self) -> str:
         return f"{self.attack_type.identifier}-{self.destination_ip}-{self.source_ip}"
 
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, Exploit):
+            return False
+        return self.attack_type == value.attack_type and self.size == value.size and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip and self.start_time == value.start_time and self.end_time == value.end_time and self.mean_interflow_time == value.mean_interflow_time and self.std_interflow_time == value.std_interflow_time
+
     def __str__(self) -> str:
         return f"Exploit(attack_type={self.attack_type.identifier}, size={self.size}, source_ip={self.source_ip}, destination_ip={self.destination_ip}, start_time={self.start_time.isoformat()}, end_time={self.end_time.isoformat()}, mean_ift={self.mean_interflow_time}, std_ift={self.std_interflow_time})"
 
@@ -128,8 +137,8 @@ class StringToExploitConverter:
     def from_str_flow_exploit(self, flow_exploit_str: str) -> FlowExploit:
         if not flow_exploit_str.startswith("FlowExploit(") or not flow_exploit_str.endswith(")"):
             raise RuntimeError("Provided string has wrong format")
-        flow_exploit_str.removeprefix("FlowExploit(")
-        flow_exploit_str.removesuffix(")")
+        flow_exploit_str = flow_exploit_str.removeprefix("FlowExploit(")
+        flow_exploit_str = flow_exploit_str.removesuffix(")")
         fields = flow_exploit_str.split(", ")
         flow_exploit_dict = {field.split("=")[0]: field.split("=")[
             1] for field in fields}
@@ -145,8 +154,8 @@ class StringToExploitConverter:
     def from_str_exploit(self, exploit_str: str) -> Exploit:
         if not exploit_str.startswith("Exploit(") or not exploit_str.endswith(")"):
             raise RuntimeError("Provided string has wrong format")
-        exploit_str.removeprefix("Exploit(")
-        exploit_str.removesuffix(")")
+        exploit_str = exploit_str.removeprefix("Exploit(")
+        exploit_str = exploit_str.removesuffix(")")
         fields = exploit_str.split(", ")
         exploit_dict = {field.split("=")[0]: field.split("=")[
             1] for field in fields}
@@ -157,7 +166,7 @@ class StringToExploitConverter:
         if attack_type == None:
             raise RuntimeError(
                 "Found attack type not defined in the provided list")
-        return Exploit(attack_type, int(exploit_dict["size"]), exploit_dict["source_ip"], exploit_dict["destination_ip"], datetime.fromisoformat(exploit_dict["start_time"]), datetime.fromisoformat(exploit_dict["end_time"]), float(exploit_dict["mean_itf"]), float(exploit_dict["std_itf"]))
+        return Exploit(attack_type, int(exploit_dict["size"]), exploit_dict["source_ip"], exploit_dict["destination_ip"], datetime.fromisoformat(exploit_dict["start_time"]), datetime.fromisoformat(exploit_dict["end_time"]), float(exploit_dict["mean_ift"]), float(exploit_dict["std_ift"]))
 
 
 class ExploitRequirement:
@@ -180,7 +189,7 @@ class ExploitRequirement:
 
 class NetworkState:
 
-    def __init__(self, att_dict: dict[str, set[HostAttribute]], transition_time: datetime) -> None:
+    def __init__(self, att_dict: dict[str, set[T]], transition_time: datetime) -> None:
         self.state = att_dict
         self.transition_time = transition_time
 
@@ -189,9 +198,21 @@ class NetworkState:
         return cls({ip_address: host.compromise_attributes for ip_address, host in host_dict.items()}, timestamp)
 
     def __str__(self) -> str:
-        state = "-".join([f"{ip_addr}={{"+f"{', '.join([att.value for att in att_set])}" +
+        state = "-".join([f"{ip_addr}={{"+f"{'; '.join([att.value for att in att_set])}" +
                          "}" for ip_addr, att_set in self.state.items()])
-        return f"NetworkState(state={state}, time={self.transition_time.isoformat()})"
+        return f"NetworkState(state={{{state}}}, time={self.transition_time.isoformat()})"
+
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, NetworkState):
+            return False
+        if value.transition_time != self.transition_time:
+            return False
+        for ip_addr, att_set in self.state.items():
+            if ip_addr not in value.state:
+                return False
+            if value.state[ip_addr] != att_set:
+                return False
+        return True
 
 
 class StringToNetworkStateConvertor:
@@ -202,22 +223,28 @@ class StringToNetworkStateConvertor:
     def from_str(self, network_state_str: str) -> "NetworkState":
         if not network_state_str.startswith("NetworkState(") or not network_state_str.endswith(")"):
             raise RuntimeError("Provided string has wrong format")
-        network_state_str.removeprefix("NetworkState(")
-        network_state_str.removesuffix(")")
+        network_state_str = network_state_str.removeprefix("NetworkState(")
+        network_state_str = network_state_str.removesuffix(")")
         split_str = network_state_str.split(", ")
         state_str = split_str[0]
-        time_str = split_str[1]
+        time_str = split_str[1].removeprefix("time=")
+        if not state_str.startswith("state={") or not state_str.endswith("}"):
+            raise RuntimeError("Provided string has wrong format")
+        state_str = state_str.removeprefix("state={")
+        state_str = state_str.removesuffix("}")
+        if state_str == "":
+            return NetworkState({}, datetime.fromisoformat(time_str))
         host_states_str = state_str.split("-")
         host_dict: dict[str, set[HostAttribute]] = {}
         for host_state_str in host_states_str:
-            host_state_str_split = host_state_str
+            host_state_str_split = host_state_str.split("=")
             ip_addr = host_state_str_split[0]
             att_set_str = host_state_str_split[1]
             if not att_set_str.startswith("{") or not att_set_str.endswith("}"):
                 raise RuntimeError("Provided string has wrong format")
-            att_set_str.removeprefix("{")
-            att_set_str.removesuffix("}")
-            att_set_str_split = att_set_str.split(", ")
+            att_set_str = att_set_str.removeprefix("{")
+            att_set_str = att_set_str.removesuffix("}")
+            att_set_str_split = att_set_str.split("; ")
             host_dict[ip_addr] = {self.att_type(
                 att_str) for att_str in att_set_str_split}
         return NetworkState(host_dict, datetime.fromisoformat(time_str))
@@ -225,7 +252,7 @@ class StringToNetworkStateConvertor:
 
 class StarNetworkAttackGraphBasedScenarioReconstructor:
 
-    def __init__(self, internal_hosts: list[Host], external_host_attributes: set[HostAttribute], attack_types: list[AttackType], exploit_log_path: str, flow_exploit_log_path: str, state_log_path: str):
+    def __init__(self, internal_hosts: list[Host], external_host_attributes: set[HostAttribute], attack_types: list[AttackType], exploit_log_path: str, flow_exploit_log_path: str, state_log_path: str, correlation_log_path: str):
         self.host_dict = {host.ip_address: host for host in internal_hosts}
         self.external_host_attributes = external_host_attributes
         self.seen_external_hosts_dict = {}
@@ -239,6 +266,7 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
         self.state_sequence = [initial_state]
         self.correlation_sequence: list[str] = []
         self.state_log_path = state_log_path
+        self.correlation_log_path = correlation_log_path
 
     def check_preconditions(self, flow_exploit: FlowExploit) -> bool:
 
@@ -387,7 +415,7 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
         if not host:
             raise ValueError(
                 f"Postcondition defined on unknown system host: {flow_exploit.destination_ip}")
-        if flow_exploit.attack_type.postconditions in host.compromise_attributes:
+        if flow_exploit.attack_type.postconditions.issubset(host.compromise_attributes):
             return False
         return True
 
@@ -403,6 +431,9 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
             flow_exploit.get_flow_exploit_group_id())
 
     def log_exploits(self, ref_flow_exploit: FlowExploit):
+        if ref_flow_exploit.get_flow_exploit_group_id() not in self.flow_exploits_dict or ref_flow_exploit.get_flow_exploit_group_id() not in self.exploits_dict or len(self.exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]) == 0 or len(self.flow_exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]) == 0:
+            raise RuntimeError(
+                "Tried to log exploits while not having any exploit")
         with open(self.flow_exploit_log_path, "a") as f_log:
             f_log.write(ref_flow_exploit.get_flow_exploit_group_id()+"\n")
             for exploit in self.flow_exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]:
@@ -419,17 +450,20 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
             self.exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()] = [
             ]
 
-    def get_flow_exploits_number(self, ref_flow_exploit: FlowExploit) -> int:
-        return len(self.flow_exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()])
+    def get_flow_exploit_group_lenght(self, ref_flow_exploit: FlowExploit) -> int:
+        return len(self.flow_exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]) if ref_flow_exploit.get_flow_exploit_group_id() in self.flow_exploits_dict else 0
 
-    def get_state_sequence_size(self):
+    def get_state_sequence_lenght(self):
         return len(self.state_sequence)
 
     def update_network_state(self, flow_exploit: FlowExploit):
         self.state_sequence.append(NetworkState.from_dict_of_host(
-            self.host_dict, flow_exploit.start_time))
+            self.host_dict, flow_exploit.end_time))
 
     def update_exploits(self, ref_flow_exploit: FlowExploit):
+        if ref_flow_exploit.get_flow_exploit_group_id() not in self.flow_exploits_dict or len(self.flow_exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]) == 0:
+            raise RuntimeError(
+                "Tried to build Exploit objects out of an empty flow exploit dict")
         flow_exploits = self.flow_exploits_dict[ref_flow_exploit.get_flow_exploit_group_id(
         )]
         X = pd.DataFrame([(flow_exploit.start_time.timestamp(), flow_exploit.end_time.timestamp(
@@ -448,17 +482,20 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
             ends = group["end_time"].to_numpy()
             intervals = starts[1:]-ends[:-1]
             exploits.append(Exploit(ref_flow_exploit.attack_type, len(group), ref_flow_exploit.source_ip,
-                            ref_flow_exploit.destination_ip, min(group["start_time"]), max(group["end_time"]), intervals.mean(), intervals.std()))
+                            ref_flow_exploit.destination_ip, datetime.fromtimestamp(min(group["start_time"])), datetime.fromtimestamp(max(group["end_time"])), intervals.mean(), intervals.std()))
 
         for _, flow_exploit in noise.iterrows():
             exploits.append(Exploit(ref_flow_exploit.attack_type, 1, ref_flow_exploit.source_ip,
-                            ref_flow_exploit.destination_ip, flow_exploit["start_time"], flow_exploit["end_time"], -1, -1))
+                            ref_flow_exploit.destination_ip, datetime.fromtimestamp(flow_exploit["start_time"]), datetime.fromtimestamp(flow_exploit["end_time"]), -1, -1))
         exploits.sort(key=lambda ex: ex.start_time)
         self.exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()
                            ] = exploits
 
     def log_states(self):
-        with open(self.state_log_path, "a") as f:
+        with open(self.state_log_path, "a") as s_f:
             for network_state in self.state_sequence:
-                f.write(str(network_state)+"\n")
+                s_f.write(str(network_state)+"\n")
         self.state_sequence = []
+        with open(self.correlation_log_path, "a") as c_f:
+            for correlation in self.correlation_sequence:
+                c_f.write(correlation+"\n")

@@ -1,7 +1,8 @@
 import unittest
-from scenario_reconstructor.scenario_reconstructor import Host, StarNetworkAttackGraphBasedScenarioReconstructor, HostAttribute, AttackType, FlowExploit, Preconditions, ExploitRequirement
+from scenario_reconstructor.scenario_reconstructor import Host, StarNetworkAttackGraphBasedScenarioReconstructor, HostAttribute, AttackType, FlowExploit, Preconditions, ExploitRequirement, Exploit, NetworkState, StringToExploitConverter, StringToNetworkStateConvertor
 from datetime import datetime
 import os
+import numpy as np
 
 
 class TestHostCompromiseAttributeImplementation(HostAttribute):
@@ -9,6 +10,76 @@ class TestHostCompromiseAttributeImplementation(HostAttribute):
     PORT_SCANNED = "port_scanned"
     HOST_VULNERABLE = "host_vulnerable"
     HOST_COMPROMISED = "host_compromised"
+
+
+class TestExploit(unittest.TestCase):
+
+    def setUp(self) -> None:
+        self.exploit = Exploit(AttackType("attack_1", set(), set()), 2, "109.0.0.2", "108.8.09.9", datetime(
+            2026, 11, 12, 10), datetime(2026, 11, 12, 10, 30), 2, 3)
+
+    def test_get_exploit_group_id(self):
+        self.assertEqual(self.exploit.get_exploit_group_id(),
+                         "attack_1-108.8.09.9-109.0.0.2")
+
+    def test_to_str(self):
+        self.assertEqual(str(self.exploit), "Exploit(attack_type=attack_1, size=2, source_ip=109.0.0.2, destination_ip=108.8.09.9, start_time=2026-11-12T10:00:00, end_time=2026-11-12T10:30:00, mean_ift=2, std_ift=3)")
+
+
+class TestNetworkState(unittest.TestCase):
+
+    def setUp(self) -> None:
+        attribute_dict = {"10.0.0.5": {TestHostCompromiseAttributeImplementation.HOST_DISCOVERED}, "10.0.0.6": {
+            TestHostCompromiseAttributeImplementation.PORT_SCANNED}}
+        self.state = NetworkState(attribute_dict, datetime(2026, 10, 10, 10))
+
+    def test_to_str(self):
+        self.assertEqual(str(
+            self.state), "NetworkState(state={10.0.0.5={host_discovered}-10.0.0.6={port_scanned}}, time=2026-10-10T10:00:00)")
+
+    def test_from_dict_of_host(self):
+        host1 = Host("10.0.0.5")
+        host2 = Host("10.0.0.6")
+        host1.update_compromise_attributes(
+            {TestHostCompromiseAttributeImplementation.HOST_DISCOVERED})
+        host2.update_compromise_attributes(
+            {TestHostCompromiseAttributeImplementation.PORT_SCANNED})
+        self.assertEqual(NetworkState.from_dict_of_host(
+            {"10.0.0.5": host1, "10.0.0.6": host2}, datetime(2026, 10, 10, 10)), self.state)
+
+
+class TestStringToNetworkStateConverter(unittest.TestCase):
+
+    def setUp(self) -> None:
+        self.converter = StringToNetworkStateConvertor(
+            TestHostCompromiseAttributeImplementation)
+
+    def test_from_str_empty_state(self):
+        self.assertEqual(self.converter.from_str("NetworkState(state={}, time=2026-10-10T10:00:00)"),
+                         NetworkState({}, datetime(2026, 10, 10, 10)))
+
+    def test_from_str_single(self):
+        self.assertEqual(self.converter.from_str("NetworkState(state={10.0.0.5={host_discovered}}, time=2026-10-10T10:00:00)"), NetworkState(
+            {"10.0.0.5": {TestHostCompromiseAttributeImplementation.HOST_DISCOVERED}}, datetime(2026, 10, 10, 10)))
+
+    def test_from_str_multiple(self):
+        self.assertEqual(self.converter.from_str("NetworkState(state={10.0.0.5={host_discovered; port_scanned}-10.0.0.6={host_discovered; port_scanned}}, time=2026-10-10T10:00:00)"), NetworkState({"10.0.0.5": {TestHostCompromiseAttributeImplementation.HOST_DISCOVERED,
+                         TestHostCompromiseAttributeImplementation.PORT_SCANNED}, "10.0.0.6": {TestHostCompromiseAttributeImplementation.HOST_DISCOVERED, TestHostCompromiseAttributeImplementation.PORT_SCANNED}}, datetime(2026, 10, 10, 10)))
+
+
+class TestStringToExploitConverter(unittest.TestCase):
+
+    def setUp(self) -> None:
+        self.converter = StringToExploitConverter(
+            [AttackType("attack_1", set(), set()), AttackType("attack_2", set(), set())])
+
+    def test_str_to_flow_exploit(self):
+        self.assertEqual(self.converter.from_str_flow_exploit("FlowExploit(attack_type=attack_1, source_ip=10.0.0.1, source_port=50, destination_ip=10.0.0.2, destination_port=5000, protocol=6, start_time=2026-06-08T18:30:00, end_time=2026-06-08T19:00:00, anomaly_score=0.5)"), FlowExploit(AttackType("attack_1", set(), set()), "10.0.0.1", "50", "10.0.0.2",
+                                                                                                                                                                                                                                                                                                 "5000", "6", datetime(2026, 6, 8, 18, 30), datetime(2026, 6, 8, 19), 0.5))
+
+    def test_str_to_exploit(self):
+        self.assertEqual(self.converter.from_str_exploit("Exploit(attack_type=attack_1, size=2, source_ip=109.0.0.2, destination_ip=108.8.09.9, start_time=2026-11-12T10:00:00, end_time=2026-11-12T10:30:00, mean_ift=2, std_ift=3)"), Exploit(AttackType("attack_1", set(), set()), 2, "109.0.0.2", "108.8.09.9", datetime(
+            2026, 11, 12, 10), datetime(2026, 11, 12, 10, 30), 2, 3))
 
 
 class TestHost(unittest.TestCase):
@@ -58,14 +129,14 @@ class TestFlowExploit(unittest.TestCase):
 
     def setUp(self):
         self.exploit = FlowExploit(AttackType("unknown", set(), set()), "10.0.0.1", "50", "10.0.0.2",
-                               "5000", "6", datetime(2026, 6, 8, 18, 30), datetime(2026, 6, 8, 19), 0.5, 0.5)
+                                   "5000", "6", datetime(2026, 6, 8, 18, 30), datetime(2026, 6, 8, 19), 0.5)
 
     def test_exploit_id(self):
-        self.assertEqual(self.exploit.get_exploit_group_id(),
-                         "unknown-10.0.0.2-5000-10.0.0.1-50-6")
+        self.assertEqual(self.exploit.get_flow_exploit_group_id(),
+                         "unknown-10.0.0.2-10.0.0.1")
 
     def test_str(self):
-        self.assertEqual(str(self.exploit), "Exploit(attack_type=unknown, source_ip=10.0.0.1, source_port=50, destination_ip=10.0.0.2, destination_port=5000, protocol=6, start_time=2026-06-08T18:30:00, end_time=2026-06-08T19:00:00, anomaly_score=0.5)")
+        self.assertEqual(str(self.exploit), "FlowExploit(attack_type=unknown, source_ip=10.0.0.1, source_port=50, destination_ip=10.0.0.2, destination_port=5000, protocol=6, start_time=2026-06-08T18:30:00, end_time=2026-06-08T19:00:00, anomaly_score=0.5)")
 
 
 class TestFlowExploitRequirements(unittest.TestCase):
@@ -117,11 +188,13 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
         self.attack4 = AttackType("vulnerability_exploit", {Preconditions({TestHostCompromiseAttributeImplementation.HOST_COMPROMISED}, True), Preconditions(
             {TestHostCompromiseAttributeImplementation.PORT_SCANNED}, False), Preconditions({TestHostCompromiseAttributeImplementation.HOST_VULNERABLE}, False)}, {TestHostCompromiseAttributeImplementation.HOST_COMPROMISED})
         self.scenario_reconstructor = StarNetworkAttackGraphBasedScenarioReconstructor(
-            [self.host1, self.host2], {TestHostCompromiseAttributeImplementation.PORT_SCANNED, TestHostCompromiseAttributeImplementation.HOST_VULNERABLE, TestHostCompromiseAttributeImplementation.HOST_DISCOVERED, TestHostCompromiseAttributeImplementation.HOST_COMPROMISED}, TestHostCompromiseAttributeImplementation, [self.attack1, self.attack2, self.attack3, self.attack4], "./exploits.log", "./states.log")
+            [self.host1, self.host2], {TestHostCompromiseAttributeImplementation.PORT_SCANNED, TestHostCompromiseAttributeImplementation.HOST_VULNERABLE, TestHostCompromiseAttributeImplementation.HOST_DISCOVERED, TestHostCompromiseAttributeImplementation.HOST_COMPROMISED},  [self.attack1, self.attack2, self.attack3, self.attack4], "./exploits.log", "./flow_exploits.log", "./states.log", "./correlations.log")
 
     def tearDown(self):
         if os.path.exists("./exploits.log"):
             os.remove("./exploits.log")
+        if os.path.exists("./flow_exploits.log"):
+            os.remove("./flow_exploits.log")
         if os.path.exists("./states.log"):
             os.remove("./states.log")
 
@@ -150,68 +223,35 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
         exploit = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
             2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8)
         self.scenario_reconstructor.add_flow_exploit(exploit)
-        self.assertIn("host_discovery-10.0.0.1-40-10.0.0.5-50000-6",
+        self.assertIn("host_discovery-10.0.0.1-10.0.0.5",
                       self.scenario_reconstructor.flow_exploits_dict)
         self.assertEqual(
-            self.scenario_reconstructor.flow_exploits_dict["host_discovery-10.0.0.1-40-10.0.0.5-50000-6"][-1], exploit)
+            self.scenario_reconstructor.flow_exploits_dict["host_discovery-10.0.0.1-10.0.0.5"][-1], exploit)
 
-    def test_get_expoit_dict_size(self):
-        self.assertEqual(
-            self.scenario_reconstructor.get_flow_exploit_dict_size(), 0)
+    def test_get_flow_expoit_group_size(self):
         exploit = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
             2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8)
+        self.assertEqual(
+            self.scenario_reconstructor.get_flow_exploit_group_lenght(exploit), 0)
         self.scenario_reconstructor.add_flow_exploit(exploit)
         self.assertEqual(
-            self.scenario_reconstructor.get_flow_exploit_dict_size(), 1)
+            self.scenario_reconstructor.get_flow_exploit_group_lenght(exploit), 1)
         exploit2 = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
             2026, 6, 11, 10, 30), datetime(2026, 6, 11, 10, 35), 0.9)
         self.scenario_reconstructor.add_flow_exploit(exploit2)
         self.assertEqual(
-            self.scenario_reconstructor.get_flow_exploit_dict_size(), 2)
-        exploit3 = FlowExploit(self.attack1, "10.0.0.5", "50001", "10.0.0.1", "40", "6", datetime(
+            self.scenario_reconstructor.get_flow_exploit_group_lenght(exploit), 2)
+        exploit3 = FlowExploit(self.attack2, "10.0.0.5", "50001", "10.0.0.1", "40", "6", datetime(
             2026, 6, 11, 10, 30), datetime(2026, 6, 11, 10, 35), 0.9)
         self.scenario_reconstructor.add_flow_exploit(exploit3)
         self.assertEqual(
-            self.scenario_reconstructor.get_flow_exploit_dict_size(), 3)
-
-    def test_merge_exploits(self):
-        exploit1 = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
-            2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8)
-        exploit2 = FlowExploit(self.attack2, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
-            2026, 6, 11, 10, 30), datetime(2026, 6, 11, 10, 35), 0.9)
-        exploit3 = FlowExploit(self.attack1, "10.0.0.5", "50001", "10.0.0.1", "40", "6", datetime(
-            2026, 6, 11, 10, 30), datetime(2026, 6, 11, 10, 35), 0.9)
-        exploit4 = FlowExploit(self.attack1, "10.0.0.5", "50001", "10.0.0.1", "40", "6", datetime(
-            2026, 6, 11, 12, 30), datetime(2026, 6, 11, 13, 35), 0.6)
-        self.scenario_reconstructor.flow_exploits_dict[exploit1.get_exploit_group_id()] = [
-            exploit1]
-        self.scenario_reconstructor.flow_exploits_dict[exploit2.get_exploit_group_id()] = [
-            exploit2]
-        self.scenario_reconstructor.flow_exploits_dict[exploit3.get_exploit_group_id()] = [
-            exploit3, exploit4]
-        self.scenario_reconstructor.persist_flow_exploits()
-        exploit_strs = [str(exploit1), str(exploit2),
-                        str(exploit3), str(exploit4)]
-        with open("./exploits.log", "r") as f:
-            for line in f.readlines():
-                self.assertIn(line.strip(), exploit_strs)
-        for exploits in self.scenario_reconstructor.flow_exploits_dict.values():
-            self.assertEqual(len(exploits), 0)
-        self.assertIn(exploit1.get_exploit_group_id(),
-                      self.scenario_reconstructor.exploits_dict)
-        self.assertIn(exploit2.get_exploit_group_id(),
-                      self.scenario_reconstructor.exploits_dict)
-        self.assertIn(exploit3.get_exploit_group_id(),
-                      self.scenario_reconstructor.exploits_dict)
-        self.assertIn(exploit4.get_exploit_group_id(),
-                      self.scenario_reconstructor.exploits_dict)
+            self.scenario_reconstructor.get_flow_exploit_group_lenght(exploit2), 2)
 
     def test_check_exploit_requirements_invalid_ips(self):
         exploit1 = FlowExploit(self.attack1, "10.0.0.53", "50000", "10.0.0.23", "40", "6", datetime(
             2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8)
         with self.assertRaises(ValueError, msg="Precondition defined on two external ips: 10.0.0.53 10.0.0.23"):
             self.scenario_reconstructor.check_preconditions(exploit1)
-
 
     def test_compute_requirements_edge_cases(self):
         exploit1 = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
@@ -317,38 +357,158 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
         self.assertIn(ExploitRequirement(
             self.attack4, ["10.0.0.5", "10.0.0.1"], "10.0.0.2"), requirements)
 
-    def test_register_network_state(self):
-        exploit = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "50", "6", datetime(
-            2026, 6, 1, 12), datetime(2026, 6, 1, 13, 30), 0.8)
-        self.scenario_reconstructor.host_dict["10.0.0.1"].update_compromise_attributes(
-            {TestHostCompromiseAttributeImplementation.HOST_DISCOVERED})
-        self.scenario_reconstructor.update_network_state(exploit)
-        self.assertEqual(len(self.scenario_reconstructor.exploit_sequence), 1)
-        self.assertEqual(
-            self.scenario_reconstructor.exploit_sequence[0], exploit)
-        self.assertEqual(
-            len(self.scenario_reconstructor.state_sequence), 2)
-        self.assertEqual(self.scenario_reconstructor.state_sequence[1]["10.0.0.1"], {
-                         TestHostCompromiseAttributeImplementation.HOST_DISCOVERED})
-        self.assertEqual(
-            self.scenario_reconstructor.state_sequence[1]["10.0.0.2"], set())
+    def test_would_change_state(self):
+        exploit1 = FlowExploit(self.attack2, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
+            2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8)
+        self.assertTrue(
+            self.scenario_reconstructor.would_change_state(exploit1))
+        self.host1.update_compromise_attributes(
+            {TestHostCompromiseAttributeImplementation.PORT_SCANNED})
+        self.assertFalse(
+            self.scenario_reconstructor.would_change_state(exploit1))
 
-    def test_persist_history(self):
-        exploit = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "50", "6", datetime(
-            2026, 6, 1, 12), datetime(2026, 6, 1, 13, 30), 0.8)
-        self.scenario_reconstructor.host_dict["10.0.0.1"].update_compromise_attributes(
-            {TestHostCompromiseAttributeImplementation.HOST_DISCOVERED})
-        self.scenario_reconstructor.update_network_state(exploit)
-        self.scenario_reconstructor.log_states()
-        self.assertEqual(len(self.scenario_reconstructor.state_sequence), 0)
-        self.assertEqual(len(self.scenario_reconstructor.exploit_sequence), 0)
-        with open("./states.log", "r") as f:
-            lines = f.readlines()
+    def test_add_correlation(self):
+        exploit1 = FlowExploit(self.attack2, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
+            2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8)
+        self.scenario_reconstructor.add_correlation(exploit1)
+        self.assertEqual(
+            self.scenario_reconstructor.correlation_sequence[-1], "port_scanning-10.0.0.1-10.0.0.5")
+
+    def test_log_empty(self):
+        f_exploit1 = FlowExploit(self.attack2, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
+            2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8)
+        self.scenario_reconstructor.flow_exploits_dict["port_scanning-10.0.0.1-10.0.0.5"] = [
+            f_exploit1]
+        with self.assertRaises(RuntimeError):
+            self.scenario_reconstructor.log_exploits(f_exploit1)
+        self.scenario_reconstructor.flow_exploits_dict["port_scanning-10.0.0.1-10.0.0.5"] = [
+        ]
+        exploit = Exploit(self.attack2, 1, "10.0.0.5", "10.0.0.1", datetime(
+            2026, 12, 12, 12), datetime(2026, 12, 21, 0), 12, 12)
+        self.scenario_reconstructor.exploits_dict["port_scanning-10.0.0.1-10.0.0.5"] = [
+            exploit]
+        with self.assertRaises(RuntimeError):
+            self.scenario_reconstructor.log_exploits(f_exploit1)
+
+    def test_log_exploits(self):
+        flow_ex1 = FlowExploit(self.attack2, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
+            2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8)
+        flow_ex2 = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
+            2026, 6, 10, 10), datetime(2026, 6, 10, 10, 3), 0.7)
+
+        ex1 = Exploit(self.attack2, 3, "10.0.0.5", "10.0.0.1", datetime(
+            2026, 12, 12, 12), datetime(2026, 12, 21, 0), 12, 12)
+        ex2 = Exploit(self.attack1, 3, "10.0.0.5", "10.0.0.1", datetime(
+            2026, 12, 12, 12), datetime(2026, 12, 21, 0), 12, 12)
+
+        self.scenario_reconstructor.flow_exploits_dict["port_scanning-10.0.0.1-10.0.0.5"] = [
+            flow_ex1]
+        self.scenario_reconstructor.exploits_dict["port_scanning-10.0.0.1-10.0.0.5"] = [
+            ex1]
+
+        self.scenario_reconstructor.flow_exploits_dict["host_discovery-10.0.0.1-10.0.0.5"] = [
+            flow_ex2]
+        self.scenario_reconstructor.exploits_dict["host_discovery-10.0.0.1-10.0.0.5"] = [
+            ex2]
+
+        self.scenario_reconstructor.log_exploits(flow_ex1)
+
+        self.assertEqual(len(
+            self.scenario_reconstructor.flow_exploits_dict["port_scanning-10.0.0.1-10.0.0.5"]), 0)
+        self.assertEqual(len(
+            self.scenario_reconstructor.exploits_dict["port_scanning-10.0.0.1-10.0.0.5"]), 0)
+
+        self.assertEqual(len(
+            self.scenario_reconstructor.flow_exploits_dict["host_discovery-10.0.0.1-10.0.0.5"]), 1)
+        self.assertEqual(len(
+            self.scenario_reconstructor.exploits_dict["host_discovery-10.0.0.1-10.0.0.5"]), 1)
+
+        with open("./flow_exploits.log", "r") as e_l:
+            lines = e_l.readlines()
             self.assertEqual(len(lines), 3)
-            self.assertIn("State(10.0.0.1={}-10.0.0.2={})\n", lines)
-            self.assertIn("Exploit(attack_type=host_discovery, source_ip=10.0.0.5, source_port=50000, destination_ip=10.0.0.1, destination_port=50, protocol=6, start_time=2026-06-01T12:00:00, end_time=2026-06-01T13:30:00, anomaly_score=0.8)\n", lines)
-            self.assertIn(
-                "State(10.0.0.1={host_discovered}-10.0.0.2={})\n", lines)
+            self.assertEqual(lines[0], "port_scanning-10.0.0.1-10.0.0.5\n")
+            self.assertEqual(lines[1], "FlowExploit(attack_type=port_scanning, source_ip=10.0.0.5, source_port=50000, destination_ip=10.0.0.1, destination_port=40, protocol=6, start_time=2026-06-10T10:30:00, end_time=2026-06-10T10:35:00, anomaly_score=0.8)\n")
+            self.assertEqual(lines[2], "\n")
+
+        with open("./exploits.log", "r") as e_l:
+            lines = e_l.readlines()
+            self.assertEqual(len(lines), 3)
+            self.assertEqual(lines[0], "port_scanning-10.0.0.1-10.0.0.5\n")
+            self.assertEqual(
+                lines[1], "Exploit(attack_type=port_scanning, size=3, source_ip=10.0.0.5, destination_ip=10.0.0.1, start_time=2026-12-12T12:00:00, end_time=2026-12-21T00:00:00, mean_ift=12, std_ift=12)\n")
+            self.assertEqual(lines[2], "\n")
+
+    def test_log_exploits_multiple(self):
+        flow_ex2 = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
+            2026, 6, 10, 10), datetime(2026, 6, 10, 10, 3), 0.7)
+        ex2 = Exploit(self.attack1, 3, "10.0.0.5", "10.0.0.1", datetime(
+            2026, 12, 12, 12), datetime(2026, 12, 21, 0), 12, 12)
+
+        ex_new = Exploit(self.attack1, 4, "10.0.0.5", "10.0.0.1", datetime(
+            2026, 12, 12, 12), datetime(2026, 12, 21, 0), 12, 10)
+        flow_ex_new = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
+            2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8)
+
+        self.scenario_reconstructor.flow_exploits_dict["host_discovery-10.0.0.1-10.0.0.5"] = [
+            flow_ex2, flow_ex_new]
+        self.scenario_reconstructor.exploits_dict["host_discovery-10.0.0.1-10.0.0.5"] = [
+            ex2, ex_new]
+
+        self.scenario_reconstructor.log_exploits(flow_ex2)
+
+        with open("./flow_exploits.log", "r") as e_l:
+            lines = e_l.readlines()
+            self.assertEqual(len(lines), 4)
+            self.assertEqual(lines[0], "host_discovery-10.0.0.1-10.0.0.5\n")
+            self.assertEqual(lines[1], "FlowExploit(attack_type=host_discovery, source_ip=10.0.0.5, source_port=50000, destination_ip=10.0.0.1, destination_port=40, protocol=6, start_time=2026-06-10T10:00:00, end_time=2026-06-10T10:03:00, anomaly_score=0.7)\n")
+            self.assertEqual(lines[2], "FlowExploit(attack_type=host_discovery, source_ip=10.0.0.5, source_port=50000, destination_ip=10.0.0.1, destination_port=40, protocol=6, start_time=2026-06-10T10:30:00, end_time=2026-06-10T10:35:00, anomaly_score=0.8)\n")
+            self.assertEqual(lines[3], "\n")
+
+        with open("./exploits.log", "r") as e_l:
+            lines = e_l.readlines()
+            self.assertEqual(len(lines), 4)
+            self.assertEqual(lines[0], "host_discovery-10.0.0.1-10.0.0.5\n")
+            self.assertEqual(
+                lines[1], "Exploit(attack_type=host_discovery, size=3, source_ip=10.0.0.5, destination_ip=10.0.0.1, start_time=2026-12-12T12:00:00, end_time=2026-12-21T00:00:00, mean_ift=12, std_ift=12)\n")
+            self.assertEqual(
+                lines[2], "Exploit(attack_type=host_discovery, size=4, source_ip=10.0.0.5, destination_ip=10.0.0.1, start_time=2026-12-12T12:00:00, end_time=2026-12-21T00:00:00, mean_ift=12, std_ift=10)\n")
+            self.assertEqual(lines[3], "\n")
+
+    def test_update_network_state(self):
+        flow_ex = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
+            2026, 6, 10, 10), datetime(2026, 6, 10, 10, 3), 0.7)
+        self.host1.update_compromise_attributes(
+            {TestHostCompromiseAttributeImplementation.HOST_DISCOVERED})
+        self.scenario_reconstructor.update_network_state(flow_ex)
+        self.assertEqual(self.scenario_reconstructor.state_sequence[-1], NetworkState({"10.0.0.1": {
+                         TestHostCompromiseAttributeImplementation.HOST_DISCOVERED}, "10.0.0.2": set()}, datetime(2026, 6, 10, 10, 3)))
+
+    def test_update_exploits_empty(self):
+        flow_ex = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
+            2026, 6, 10, 10), datetime(2026, 6, 10, 10, 3), 0.7)
+        with self.assertRaises(RuntimeError):
+            self.scenario_reconstructor.update_exploits(flow_ex)
+
+    def test_update_exploits(self):
+        flow_ex1 = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
+            2026, 6, 10, 10, 1), datetime(2026, 6, 10, 10, 1, 40), 0.7)
+        flow_ex2 = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
+            2026, 6, 10, 10, 3, 30), datetime(2026, 6, 10, 10, 3, 50), 0.7)
+        flow_ex3 = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
+            2026, 6, 10, 10, 2, 10), datetime(2026, 6, 10, 10, 3), 0.7)
+        flow_ex4 = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
+            2026, 6, 10, 10, 4), datetime(2026, 6, 10, 10, 4, 55), 0.7)
+        flow_ex5 = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
+            2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 33), 0.7)
+        self.scenario_reconstructor.flow_exploits_dict["host_discovery-10.0.0.1-10.0.0.5"] = [
+            flow_ex1, flow_ex2, flow_ex3, flow_ex4, flow_ex5]
+        self.scenario_reconstructor.update_exploits(flow_ex5)
+        self.assertEqual(len(
+            self.scenario_reconstructor.exploits_dict["host_discovery-10.0.0.1-10.0.0.5"]), 2)
+        self.assertIn(Exploit(self.attack1, 1, "10.0.0.5", "10.0.0.1", datetime(
+            2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 33), -1, -1), self.scenario_reconstructor.exploits_dict["host_discovery-10.0.0.1-10.0.0.5"])
+        self.assertIn(Exploit(self.attack1, 4, "10.0.0.5", "10.0.0.1", datetime(
+            2026, 6, 10, 10, 1), datetime(2026, 6, 10, 10, 4, 55), np.array([30, 30, 10]).mean(), np.array([30, 30, 10]).std()), self.scenario_reconstructor.exploits_dict["host_discovery-10.0.0.1-10.0.0.5"])
 
 
 if __name__ == '__main__':

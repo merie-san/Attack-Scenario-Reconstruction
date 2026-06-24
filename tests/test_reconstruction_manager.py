@@ -59,8 +59,8 @@ class TestExploitGenerator(unittest.TestCase):
         )
         exploit = self.exploit_generator.to_flow_exploit(flow_event)
         self.assertEqual(exploit, FlowExploit(self.attack2, "10.0.0.3", "8080", "10.0.0.1", "443", "6",
-                                          datetime(2023, 1, 1, 12),
-                                          datetime(2023, 1, 2, 2), 0.7, 1))
+                                              datetime(2023, 1, 1, 12),
+                                              datetime(2023, 1, 2, 2), 0.7))
 
     def test_to_exploit_unknown(self):
         flow_event = FlowEvent(
@@ -77,8 +77,8 @@ class TestExploitGenerator(unittest.TestCase):
         )
         exploit = self.exploit_generator.to_flow_exploit(flow_event)
         self.assertEqual(exploit, FlowExploit(self.zero_day, "10.0.0.3", "8080", "10.0.0.1", "443", "6",
-                                          datetime(2023, 1, 1, 12),
-                                          datetime(2023, 1, 2, 2), 0.7, 1))
+                                              datetime(2023, 1, 1, 12),
+                                              datetime(2023, 1, 2, 2), 0.7))
 
 
 class TestReconstructionManager(unittest.TestCase):
@@ -95,9 +95,11 @@ class TestReconstructionManager(unittest.TestCase):
         self.zero_day = AttackType(
             "zero_day", set(), {TestHostAttributeConc.ATT_2, TestHostAttributeConc.ATT_1})
         self.scenario_reconstructor = StarNetworkAttackGraphBasedScenarioReconstructor(
-            [self.host1, self.host2], {TestHostAttributeConc.ATT_3, TestHostAttributeConc.ATT_2, TestHostAttributeConc.ATT_1}, TestHostAttributeConc, [self.attack1, self.attack2, self.attack3, self.zero_day], "./exploits.log", "./states.log")
-        self.scenario_reconstructor.seen_external_hosts_dict["10.0.0.3"]=Host("10.0.0.3")
-        self.scenario_reconstructor.seen_external_hosts_dict["10.0.0.3"].update_compromise_attributes({TestHostAttributeConc.ATT_3, TestHostAttributeConc.ATT_2, TestHostAttributeConc.ATT_1})
+            [self.host1, self.host2], {TestHostAttributeConc.ATT_3, TestHostAttributeConc.ATT_2, TestHostAttributeConc.ATT_1}, [self.attack1, self.attack2, self.attack3, self.zero_day], "./exploits.log", "./flow_exploits.log", "./states.log", "./correlations.log")
+        self.scenario_reconstructor.seen_external_hosts_dict["10.0.0.3"] = Host(
+            "10.0.0.3")
+        self.scenario_reconstructor.seen_external_hosts_dict["10.0.0.3"].update_compromise_attributes(
+            {TestHostAttributeConc.ATT_3, TestHostAttributeConc.ATT_2, TestHostAttributeConc.ATT_1})
         self.anomaly_threshold = 0.1
         self.exploit_threshold = 0.5
         self.mapper = AttackMapper(
@@ -133,8 +135,8 @@ class TestReconstructionManager(unittest.TestCase):
         self.reconstruction_manager.accept(flow_event)
         self.assertEqual(len(self.reconstruction_manager.suspect_dict), 1)
         self.assertIn(FlowExploit(self.attack2, "10.0.0.3", "8080", "10.0.0.1", "443", "6",
-                              datetime(2023, 1, 1, 12),
-                              datetime(2023, 1, 2, 2), 0.2, 1), self.reconstruction_manager.suspect_dict)
+                                  datetime(2023, 1, 1, 12),
+                                  datetime(2023, 1, 2, 2), 0.2), self.reconstruction_manager.suspect_dict["attack_2-10.0.0.1-10.0.0.3"])
 
     def test_accept_event_discarted(self):
         flow_event = FlowEvent(
@@ -166,30 +168,29 @@ class TestReconstructionManager(unittest.TestCase):
             attack_scores={"attack_1": 0.4, "attack_2": 0.9, "attack_3": 0}
         )
         exploit = FlowExploit(self.attack2, "10.0.0.3", "8080", "10.0.0.1", "443", "6",
-                          datetime(2023, 1, 1, 12),
-                          datetime(2023, 1, 2, 2), 0.6, 1)
+                              datetime(2023, 1, 1, 12),
+                              datetime(2023, 1, 2, 2), 0.6)
         self.reconstruction_manager.accept(flow_event)
         self.assertEqual(
-            len(self.scenario_reconstructor.flow_exploits_dict[exploit.get_exploit_group_id()]), 1)
-        self.assertIn(
-            exploit, self.scenario_reconstructor.flow_exploits_dict[exploit.get_exploit_group_id()])
+            len(self.scenario_reconstructor.flow_exploits_dict["attack_2-10.0.0.1-10.0.0.3"]), 1)
         self.assertEqual(self.scenario_reconstructor.host_dict["10.0.0.1"].get_compromise_attributes(), {
                          TestHostAttributeConc.ATT_2})
         self.assertEqual(
-            self.scenario_reconstructor.exploit_sequence[-1], exploit)
+            self.scenario_reconstructor.flow_exploits_dict["attack_2-10.0.0.1-10.0.0.3"][-1], exploit)
         self.assertEqual(len(self.scenario_reconstructor.state_sequence), 2)
-        self.reconstruction_manager.max_state_log_lenght = 1
+        self.reconstruction_manager.lenght_when_log_states = 1
+        self.reconstruction_manager.lenght_when_log_exploits = 1
         exploit = FlowExploit(self.attack2, "10.0.0.3", "8080", "10.0.0.1", "443", "6",
-                          datetime(2023, 1, 1, 12),
-                          datetime(2023, 1, 2, 2), 0.6, 1)
+                              datetime(2023, 1, 1, 12),
+                              datetime(2023, 1, 2, 2), 0.6)
         self.reconstruction_manager.accept(flow_event)
         self.assertTrue(os.path.exists("./exploits.log"))
         self.assertTrue(os.path.exists("./states.log"))
         with open("./exploits.log", "r") as log1, open("./states.log", "r") as log2:
             lines = [str.strip() for str in log1.readlines()]
-            self.assertEqual(len(lines), 2)
+            self.assertEqual(len(lines), 3)
             lines = [str.strip() for str in log2.readlines()]
-            self.assertEqual(len(lines), 5)
+            self.assertEqual(len(lines), 2)
 
     def test_accept_event_incompatible(self):
         flow_event = FlowEvent(
@@ -205,8 +206,8 @@ class TestReconstructionManager(unittest.TestCase):
             attack_scores={"attack_1": 0.4, "attack_2": 0.1, "attack_3": 0.99}
         )
         exploit = FlowExploit(self.attack3, "10.0.0.2", "8080", "10.0.0.1", "443", "6",
-                          datetime(2023, 1, 1, 12),
-                          datetime(2023, 1, 2, 2), 0.6, 1)
+                              datetime(2023, 1, 1, 12),
+                              datetime(2023, 1, 2, 2), 0.6)
         self.reconstruction_manager.accept(flow_event)
         self.assertTrue(os.path.exists("./fps.log"))
         with open("./fps.log", "r") as fplog:
@@ -228,8 +229,8 @@ class TestReconstructionManager(unittest.TestCase):
             attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3}
         )
         exploit = FlowExploit(self.attack1, "10.0.0.2", "8080", "10.0.0.1", "443", "6",
-                          datetime(2023, 1, 1, 12),
-                          datetime(2023, 1, 2, 2), 0.6, 1)
+                              datetime(2023, 1, 1, 12),
+                              datetime(2023, 1, 2, 2), 0.6)
         self.reconstruction_manager.accept(flow_event)
         self.assertTrue(os.path.exists("./fps.log"))
         with open("./fps.log", "r") as fplog:
@@ -251,15 +252,41 @@ class TestReconstructionManager(unittest.TestCase):
             attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3}
         )
         old_exploit = FlowExploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
-                              datetime(2023, 1, 1, 11),
-                              datetime(2023, 1, 1, 11, 35), 0.2, 1)
-        self.reconstruction_manager.suspect_dict.append(old_exploit)
+                                  datetime(2023, 1, 1, 11),
+                                  datetime(2023, 1, 1, 11, 35), 0.2)
+        self.reconstruction_manager.suspect_dict[old_exploit.get_flow_exploit_group_id(
+        )] = [old_exploit]
         self.reconstruction_manager.accept(flow_event)
         self.assertTrue(os.path.exists("./fns.log"))
         with open("./fns.log", "r") as fnlog:
             lines = [str.strip() for str in fnlog.readlines()]
             self.assertEqual(len(lines), 1)
             self.assertIn(str(old_exploit), lines)
+
+    def test_accept_zero_day(self):
+        flow_event = FlowEvent(
+            flow_id="12345",
+            source_ip="10.0.0.2",
+            source_port="8080",
+            destination_ip="10.0.0.1",
+            destination_port="443",
+            protocol="6",
+            start_time=datetime(2023, 1, 1, 12),
+            end_time=datetime(2023, 1, 2, 2),
+            anomaly_score=0.9,
+            attack_scores={"attack_1": 0.1, "attack_2": 0.1, "attack_3": 0.1}
+        )
+        exploit = FlowExploit(self.zero_day, "10.0.0.2", "8080", "10.0.0.1", "443", "6",
+                              datetime(2023, 1, 1, 12),
+                              datetime(2023, 1, 2, 2), 0.9)
+        self.reconstruction_manager.accept(flow_event)
+        self.assertEqual(
+            len(self.scenario_reconstructor.flow_exploits_dict["zero_day-10.0.0.1-10.0.0.2"]), 1)
+        self.assertEqual(self.scenario_reconstructor.host_dict["10.0.0.1"].get_compromise_attributes(), {
+                         TestHostAttributeConc.ATT_2, TestHostAttributeConc.ATT_1})
+        self.assertEqual(
+            self.scenario_reconstructor.flow_exploits_dict["zero_day-10.0.0.1-10.0.0.2"][-1], exploit)
+        self.assertEqual(len(self.scenario_reconstructor.state_sequence), 2)
 
     def test_accept_multiple_sat_found(self):
         flow_event = FlowEvent(
@@ -275,24 +302,203 @@ class TestReconstructionManager(unittest.TestCase):
             attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3}
         )
         old_exploit_1 = FlowExploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
-                                datetime(2023, 1, 1, 11),
-                                datetime(2023, 1, 1, 11, 35), 0.45, 1)
+                                    datetime(2023, 1, 1, 11),
+                                    datetime(2023, 1, 1, 11, 35), 0.45)
         old_exploit_2 = FlowExploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
-                                datetime(2023, 1, 1, 11 , 36),
-                                datetime(2023, 1, 1, 11, 59, 59 ), 0.3, 1)
+                                    datetime(2023, 1, 1, 11, 36),
+                                    datetime(2023, 1, 1, 11, 59, 59), 0.3)
         old_exploit_3 = FlowExploit(self.attack2, "10.0.0.3", "8080", "10.0.0.1", "443", "6",
-                                datetime(2023, 1, 1, 11 ),
-                                datetime(2023, 1, 1, 11, 59), 0.2, 1)
+                                    datetime(2023, 1, 1, 11),
+                                    datetime(2023, 1, 1, 11, 59), 0.2)
         old_exploit_4 = FlowExploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
-                                datetime(2023, 1, 1, 11 ),
-                                datetime(2023, 1, 2), 0.3, 1)        
-        self.reconstruction_manager.suspect_dict.append(old_exploit_1)
-        self.reconstruction_manager.suspect_dict.append(old_exploit_2)
-        self.reconstruction_manager.suspect_dict.append(old_exploit_3)
-        self.reconstruction_manager.suspect_dict.append(old_exploit_4)
+                                    datetime(2023, 1, 1, 11),
+                                    datetime(2023, 1, 2), 0.3)
+        self.reconstruction_manager.suspect_dict[old_exploit_1.get_flow_exploit_group_id(
+        )] = [old_exploit_1]
+        self.reconstruction_manager.suspect_dict[old_exploit_2.get_flow_exploit_group_id(
+        )].append(old_exploit_2)
+        self.reconstruction_manager.suspect_dict[old_exploit_3.get_flow_exploit_group_id(
+        )] = [old_exploit_3]
+        self.reconstruction_manager.suspect_dict[old_exploit_4.get_flow_exploit_group_id(
+        )].append(old_exploit_4)
         self.reconstruction_manager.accept(flow_event)
         self.assertTrue(os.path.exists("./fns.log"))
         with open("./fns.log", "r") as fnlog:
             lines = [str.strip() for str in fnlog.readlines()]
             self.assertEqual(len(lines), 1)
+            self.assertIn(str(old_exploit_4), lines)
+
+    def test_accept_clustering_single_attack_type_with_clusters(self):
+        flow_event = FlowEvent(
+            flow_id="12345",
+            source_ip="10.0.0.2",
+            source_port="8080",
+            destination_ip="10.0.0.1",
+            destination_port="443",
+            protocol="6",
+            start_time=datetime(2023, 1, 1, 12),
+            end_time=datetime(2023, 1, 2, 2),
+            anomaly_score=0.6,
+            attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3}
+        )
+        old_exploit_1 = FlowExploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                    datetime(2023, 1, 1, 11, 1),
+                                    datetime(2023, 1, 1, 11, 5), 0.45)
+        old_exploit_2 = FlowExploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                    datetime(2023, 1, 1, 11, 6),
+                                    datetime(2023, 1, 1, 11, 9, 59), 0.3)
+        old_exploit_3 = FlowExploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                    datetime(2023, 1, 1, 11, 10),
+                                    datetime(2023, 1, 1, 11, 13), 0.2)
+        old_exploit_4 = FlowExploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                    datetime(2023, 1, 1, 12),
+                                    datetime(2023, 1, 1, 12, 5), 0.3)
+        self.reconstruction_manager.suspect_dict["attack_1-10.0.0.2-10.0.0.3"] = [
+            old_exploit_1]
+        self.reconstruction_manager.suspect_dict["attack_1-10.0.0.2-10.0.0.3"].append(
+            old_exploit_2)
+        self.reconstruction_manager.suspect_dict["attack_1-10.0.0.2-10.0.0.3"].append(
+            old_exploit_3)
+        self.reconstruction_manager.suspect_dict["attack_1-10.0.0.2-10.0.0.3"].append(
+            old_exploit_4)
+        self.reconstruction_manager.accept(flow_event)
+        self.assertTrue(os.path.exists("./fns.log"))
+        with open("./fns.log", "r") as fnlog:
+            lines = [str.strip() for str in fnlog.readlines()]
+            self.assertEqual(len(lines), 3)
+            self.assertIn(str(old_exploit_1), lines)
             self.assertIn(str(old_exploit_2), lines)
+            self.assertIn(str(old_exploit_3), lines)
+
+    def test_accept_clustering_single_attack_type_no_clusters(self):
+        flow_event = FlowEvent(
+            flow_id="12345",
+            source_ip="10.0.0.2",
+            source_port="8080",
+            destination_ip="10.0.0.1",
+            destination_port="443",
+            protocol="6",
+            start_time=datetime(2023, 1, 1, 13),
+            end_time=datetime(2023, 1, 2, 2),
+            anomaly_score=0.6,
+            attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3}
+        )
+        old_exploit_1 = FlowExploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                    datetime(2010, 1, 1, 11, 1),
+                                    datetime(2015, 1, 1, 11, 5), 0.45)
+        old_exploit_2 = FlowExploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                    datetime(2018, 1, 1, 11, 6),
+                                    datetime(2019, 1, 1, 11, 9, 59), 0.3)
+        old_exploit_3 = FlowExploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                    datetime(2021, 1, 1, 11, 10),
+                                    datetime(2022, 1, 1, 11, 13), 0.2)
+        old_exploit_4 = FlowExploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                    datetime(2026, 1, 1, 12),
+                                    datetime(2027, 1, 1, 12, 5), 0.3)
+        self.reconstruction_manager.suspect_dict["attack_1-10.0.0.2-10.0.0.3"] = [
+            old_exploit_1]
+        self.reconstruction_manager.suspect_dict["attack_1-10.0.0.2-10.0.0.3"].append(
+            old_exploit_2)
+        self.reconstruction_manager.suspect_dict["attack_1-10.0.0.2-10.0.0.3"].append(
+            old_exploit_3)
+        self.reconstruction_manager.suspect_dict["attack_1-10.0.0.2-10.0.0.3"].append(
+            old_exploit_4)
+        self.reconstruction_manager.accept(flow_event)
+        self.assertTrue(os.path.exists("./fns.log"))
+        with open("./fns.log", "r") as fnlog:
+            lines = [str.strip() for str in fnlog.readlines()]
+            self.assertEqual(len(lines), 1)
+            self.assertIn(str(old_exploit_4), lines)
+
+    def test_accept_clustering_multiple_attack_type(self):
+        flow_event = FlowEvent(
+            flow_id="12345",
+            source_ip="10.0.0.2",
+            source_port="8080",
+            destination_ip="10.0.0.1",
+            destination_port="443",
+            protocol="6",
+            start_time=datetime(2023, 1, 1, 13),
+            end_time=datetime(2023, 1, 2, 2),
+            anomaly_score=0.6,
+            attack_scores={"attack_1": 0.2, "attack_2": 0.9, "attack_3": 0.3}
+        )
+        old_exploit_1 = FlowExploit(self.attack2, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                    datetime(2023, 1, 1, 11, 1),
+                                    datetime(2023, 1, 1, 11, 5), 0.45)
+        old_exploit_2 = FlowExploit(self.attack2, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                    datetime(2023, 1, 1, 11, 6),
+                                    datetime(2023, 1, 1, 11, 9, 59), 0.3)
+        old_exploit_3 = FlowExploit(self.attack2, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                    datetime(2023, 1, 1, 11, 10),
+                                    datetime(2023, 1, 1, 11, 13), 0.2)
+        old_exploit_4 = FlowExploit(self.attack2, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                    datetime(2023, 1, 1, 12),
+                                    datetime(2023, 1, 1, 12, 5), 0.3)
+
+        n_old_exploit_1 = FlowExploit(self.attack3, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                      datetime(2023, 1, 1, 11, 1),
+                                      datetime(2023, 1, 1, 11, 5), 0.45)
+        n_old_exploit_2 = FlowExploit(self.attack3, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                      datetime(2023, 1, 1, 11, 6),
+                                      datetime(2023, 1, 1, 11, 9), 0.3)
+        n_old_exploit_3 = FlowExploit(self.attack3, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                      datetime(2023, 1, 1, 12, 10),
+                                      datetime(2023, 1, 1, 12, 13), 0.89)
+        n_old_exploit_4 = FlowExploit(self.attack3, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                      datetime(2023, 1, 1, 12, 14),
+                                      datetime(2023, 1, 1, 12, 15, 58), 0.7)
+        n_old_exploit_5 = FlowExploit(self.attack3, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                      datetime(2023, 1, 1, 12, 15, 59),
+                                      datetime(2023, 1, 1, 12, 16, 30), 0.6)
+        n_old_exploit_6 = FlowExploit(self.attack3, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
+                                      datetime(2023, 1, 1, 12, 17),
+                                      datetime(2023, 1, 1, 12, 18, 23), 0.8)
+
+        m_old_exploit_1 = FlowExploit(self.attack2, "10.0.0.5", "8080", "10.0.0.2", "443", "6",
+                                      datetime(2023, 1, 1, 10, 15),
+                                      datetime(2023, 1, 1, 10, 16), 0.1)
+        m_old_exploit_2 = FlowExploit(self.attack2, "10.0.0.5", "8080", "10.0.0.2", "443", "6",
+                                      datetime(2023, 1, 1, 10, 17),
+                                      datetime(2023, 1, 1, 10, 18), 0.1)
+
+        self.reconstruction_manager.suspect_dict["attack_2-10.0.0.2-10.0.0.3"] = [
+            old_exploit_1]
+        self.reconstruction_manager.suspect_dict["attack_2-10.0.0.2-10.0.0.3"].append(
+            old_exploit_2)
+        self.reconstruction_manager.suspect_dict["attack_2-10.0.0.2-10.0.0.3"].append(
+            old_exploit_3)
+        self.reconstruction_manager.suspect_dict["attack_2-10.0.0.2-10.0.0.3"].append(
+            old_exploit_4)
+
+        self.reconstruction_manager.suspect_dict["attack_3-10.0.0.2-10.0.0.3"] = [
+            n_old_exploit_1]
+        self.reconstruction_manager.suspect_dict["attack_3-10.0.0.2-10.0.0.3"].append(
+            n_old_exploit_2)
+        self.reconstruction_manager.suspect_dict["attack_3-10.0.0.2-10.0.0.3"].append(
+            n_old_exploit_3)
+        self.reconstruction_manager.suspect_dict["attack_3-10.0.0.2-10.0.0.3"].append(
+            n_old_exploit_4)
+        self.reconstruction_manager.suspect_dict["attack_3-10.0.0.2-10.0.0.3"].append(
+            n_old_exploit_5)
+        self.reconstruction_manager.suspect_dict["attack_3-10.0.0.2-10.0.0.3"].append(
+            n_old_exploit_6)
+
+        self.reconstruction_manager.suspect_dict["attack_2-10.0.0.2-10.0.0.3"] = [
+            m_old_exploit_1]
+        self.reconstruction_manager.suspect_dict["attack_2-10.0.0.2-10.0.0.3"].append(
+            m_old_exploit_2)
+
+        self.reconstruction_manager.accept(flow_event)
+        self.assertTrue(os.path.exists("./fns.log"))
+        with open("./fns.log", "r") as fnlog:
+            lines = [str.strip() for str in fnlog.readlines()]
+            self.assertEqual(len(lines), 4)
+            self.assertIn(str(n_old_exploit_3), lines)
+            self.assertIn(str(n_old_exploit_4), lines)
+            self.assertIn(str(n_old_exploit_5), lines)
+            self.assertIn(str(n_old_exploit_6), lines)
+
+
+if __name__ == '__main__':
+    unittest.main()
