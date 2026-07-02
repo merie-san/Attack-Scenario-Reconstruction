@@ -29,52 +29,28 @@ class TestExploitGenerator(unittest.TestCase):
             self.mapper, 0.1, self.zero_day)
 
     def test_to_exploit_error(self):
-        flow_event = FlowEvent(
-            flow_id="12345",
-            source_ip="10.0.0.3",
-            source_port="8080",
-            destination_ip="10.0.0.1",
-            destination_port="443",
-            protocol="6",
-            start_time=datetime(2023, 1, 1, 12),
-            end_time=datetime(2023, 1, 2, 2),
-            anomaly_score=0.001,
-            attack_scores={"attack_1": 0.4, "attack_2": 0.4}
-        )
+        flow_event = FlowEvent(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
+                               destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
+                               end_time=datetime(2023, 1, 2, 2), anomaly_score=0.001,
+                               attack_scores={"attack_1": 0.4, "attack_2": 0.4})
         with self.assertRaises(RuntimeError, msg="The flow event cannot considered an anomaly"):
             self.exploit_generator.to_flow_exploit(flow_event)
 
     def test_to_exploit_normal(self):
-        flow_event = FlowEvent(
-            flow_id="12345",
-            source_ip="10.0.0.3",
-            source_port="8080",
-            destination_ip="10.0.0.1",
-            destination_port="443",
-            protocol="6",
-            start_time=datetime(2023, 1, 1, 12),
-            end_time=datetime(2023, 1, 2, 2),
-            anomaly_score=0.7,
-            attack_scores={"attack_1": 0.4, "attack_2": 0.9}
-        )
+        flow_event = FlowEvent(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
+                               destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
+                               end_time=datetime(2023, 1, 2, 2), anomaly_score=0.7,
+                               attack_scores={"attack_1": 0.4, "attack_2": 0.9})
         exploit = self.exploit_generator.to_flow_exploit(flow_event)
         self.assertEqual(exploit, FlowExploit(self.attack2, "10.0.0.3", "8080", "10.0.0.1", "443", "6",
                                               datetime(2023, 1, 1, 12),
                                               datetime(2023, 1, 2, 2), 0.7))
 
     def test_to_exploit_unknown(self):
-        flow_event = FlowEvent(
-            flow_id="12345",
-            source_ip="10.0.0.3",
-            source_port="8080",
-            destination_ip="10.0.0.1",
-            destination_port="443",
-            protocol="6",
-            start_time=datetime(2023, 1, 1, 12),
-            end_time=datetime(2023, 1, 2, 2),
-            anomaly_score=0.7,
-            attack_scores={"attack_1": 0.01, "attack_2": 0.01}
-        )
+        flow_event = FlowEvent(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
+                               destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
+                               end_time=datetime(2023, 1, 2, 2), anomaly_score=0.7,
+                               attack_scores={"attack_1": 0.01, "attack_2": 0.01})
         exploit = self.exploit_generator.to_flow_exploit(flow_event)
         self.assertEqual(exploit, FlowExploit(self.zero_day, "10.0.0.3", "8080", "10.0.0.1", "443", "6",
                                               datetime(2023, 1, 1, 12),
@@ -120,18 +96,10 @@ class TestReconstructionManager(unittest.TestCase):
             os.remove("./fns.log")
 
     def test_accept_anomaly_added(self):
-        flow_event = FlowEvent(
-            flow_id="12345",
-            source_ip="10.0.0.3",
-            source_port="8080",
-            destination_ip="10.0.0.1",
-            destination_port="443",
-            protocol="6",
-            start_time=datetime(2023, 1, 1, 12),
-            end_time=datetime(2023, 1, 2, 2),
-            anomaly_score=0.2,
-            attack_scores={"attack_1": 0.4, "attack_2": 0.9, "attack_3": 0}
-        )
+        flow_event = FlowEvent(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
+                               destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
+                               end_time=datetime(2023, 1, 2, 2), anomaly_score=0.2,
+                               attack_scores={"attack_1": 0.4, "attack_2": 0.9, "attack_3": 0})
         self.reconstruction_manager.accept(flow_event)
         self.assertEqual(len(self.reconstruction_manager.suspect_dict), 1)
         self.assertIn(FlowExploit(self.attack2, "10.0.0.3", "8080", "10.0.0.1", "443", "6",
@@ -139,34 +107,18 @@ class TestReconstructionManager(unittest.TestCase):
                                   datetime(2023, 1, 2, 2), 0.2), self.reconstruction_manager.suspect_dict["attack_2-10.0.0.1-10.0.0.3"])
 
     def test_accept_event_discarted(self):
-        flow_event = FlowEvent(
-            flow_id="12345",
-            source_ip="10.0.0.3",
-            source_port="8080",
-            destination_ip="10.0.0.1",
-            destination_port="443",
-            protocol="6",
-            start_time=datetime(2023, 1, 1, 12),
-            end_time=datetime(2023, 1, 2, 2),
-            anomaly_score=0.001,
-            attack_scores={"attack_1": 0.4, "attack_2": 0.9, "attack_3": 0}
-        )
+        flow_event = FlowEvent(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
+                               destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
+                               end_time=datetime(2023, 1, 2, 2), anomaly_score=0.001,
+                               attack_scores={"attack_1": 0.4, "attack_2": 0.9, "attack_3": 0})
         self.reconstruction_manager.accept(flow_event)
         self.assertEqual(len(self.reconstruction_manager.suspect_dict), 0)
 
     def test_accept_event_compatible(self):
-        flow_event = FlowEvent(
-            flow_id="12345",
-            source_ip="10.0.0.3",
-            source_port="8080",
-            destination_ip="10.0.0.1",
-            destination_port="443",
-            protocol="6",
-            start_time=datetime(2023, 1, 1, 12),
-            end_time=datetime(2023, 1, 2, 2),
-            anomaly_score=0.6,
-            attack_scores={"attack_1": 0.4, "attack_2": 0.9, "attack_3": 0}
-        )
+        flow_event = FlowEvent(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
+                               destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
+                               end_time=datetime(2023, 1, 2, 2), anomaly_score=0.6,
+                               attack_scores={"attack_1": 0.4, "attack_2": 0.9, "attack_3": 0})
         exploit = FlowExploit(self.attack2, "10.0.0.3", "8080", "10.0.0.1", "443", "6",
                               datetime(2023, 1, 1, 12),
                               datetime(2023, 1, 2, 2), 0.6)
@@ -193,18 +145,10 @@ class TestReconstructionManager(unittest.TestCase):
             self.assertEqual(len(lines), 2)
 
     def test_accept_event_incompatible(self):
-        flow_event = FlowEvent(
-            flow_id="12345",
-            source_ip="10.0.0.2",
-            source_port="8080",
-            destination_ip="10.0.0.1",
-            destination_port="443",
-            protocol="6",
-            start_time=datetime(2023, 1, 1, 12),
-            end_time=datetime(2023, 1, 2, 2),
-            anomaly_score=0.6,
-            attack_scores={"attack_1": 0.4, "attack_2": 0.1, "attack_3": 0.99}
-        )
+        flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
+                               destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
+                               end_time=datetime(2023, 1, 2, 2), anomaly_score=0.6,
+                               attack_scores={"attack_1": 0.4, "attack_2": 0.1, "attack_3": 0.99})
         exploit = FlowExploit(self.attack3, "10.0.0.2", "8080", "10.0.0.1", "443", "6",
                               datetime(2023, 1, 1, 12),
                               datetime(2023, 1, 2, 2), 0.6)
@@ -216,18 +160,10 @@ class TestReconstructionManager(unittest.TestCase):
             self.assertIn(str(exploit), lines)
 
     def test_accept_no_anomaly_sat_req_found(self):
-        flow_event = FlowEvent(
-            flow_id="12345",
-            source_ip="10.0.0.2",
-            source_port="8080",
-            destination_ip="10.0.0.1",
-            destination_port="443",
-            protocol="6",
-            start_time=datetime(2023, 1, 1, 12),
-            end_time=datetime(2023, 1, 2, 2),
-            anomaly_score=0.6,
-            attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3}
-        )
+        flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
+                               destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
+                               end_time=datetime(2023, 1, 2, 2), anomaly_score=0.6,
+                               attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3})
         exploit = FlowExploit(self.attack1, "10.0.0.2", "8080", "10.0.0.1", "443", "6",
                               datetime(2023, 1, 1, 12),
                               datetime(2023, 1, 2, 2), 0.6)
@@ -239,18 +175,10 @@ class TestReconstructionManager(unittest.TestCase):
             self.assertIn(str(exploit), lines)
 
     def test_accept_single_sat_found(self):
-        flow_event = FlowEvent(
-            flow_id="12345",
-            source_ip="10.0.0.2",
-            source_port="8080",
-            destination_ip="10.0.0.1",
-            destination_port="443",
-            protocol="6",
-            start_time=datetime(2023, 1, 1, 12),
-            end_time=datetime(2023, 1, 2, 2),
-            anomaly_score=0.6,
-            attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3}
-        )
+        flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
+                               destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
+                               end_time=datetime(2023, 1, 2, 2), anomaly_score=0.6,
+                               attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3})
         old_exploit = FlowExploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
                                   datetime(2023, 1, 1, 11),
                                   datetime(2023, 1, 1, 11, 35), 0.2)
@@ -264,18 +192,10 @@ class TestReconstructionManager(unittest.TestCase):
             self.assertIn(str(old_exploit), lines)
 
     def test_accept_zero_day(self):
-        flow_event = FlowEvent(
-            flow_id="12345",
-            source_ip="10.0.0.2",
-            source_port="8080",
-            destination_ip="10.0.0.1",
-            destination_port="443",
-            protocol="6",
-            start_time=datetime(2023, 1, 1, 12),
-            end_time=datetime(2023, 1, 2, 2),
-            anomaly_score=0.9,
-            attack_scores={"attack_1": 0.1, "attack_2": 0.1, "attack_3": 0.1}
-        )
+        flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
+                               destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
+                               end_time=datetime(2023, 1, 2, 2), anomaly_score=0.9,
+                               attack_scores={"attack_1": 0.1, "attack_2": 0.1, "attack_3": 0.1})
         exploit = FlowExploit(self.zero_day, "10.0.0.2", "8080", "10.0.0.1", "443", "6",
                               datetime(2023, 1, 1, 12),
                               datetime(2023, 1, 2, 2), 0.9)
@@ -289,18 +209,10 @@ class TestReconstructionManager(unittest.TestCase):
         self.assertEqual(len(self.scenario_reconstructor.state_sequence), 2)
 
     def test_accept_multiple_sat_found(self):
-        flow_event = FlowEvent(
-            flow_id="12345",
-            source_ip="10.0.0.2",
-            source_port="8080",
-            destination_ip="10.0.0.1",
-            destination_port="443",
-            protocol="6",
-            start_time=datetime(2023, 1, 1, 12),
-            end_time=datetime(2023, 1, 2, 2),
-            anomaly_score=0.6,
-            attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3}
-        )
+        flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
+                               destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
+                               end_time=datetime(2023, 1, 2, 2), anomaly_score=0.6,
+                               attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3})
         old_exploit_1 = FlowExploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
                                     datetime(2023, 1, 1, 11),
                                     datetime(2023, 1, 1, 11, 35), 0.45)
@@ -329,18 +241,10 @@ class TestReconstructionManager(unittest.TestCase):
             self.assertIn(str(old_exploit_4), lines)
 
     def test_accept_clustering_single_attack_type_with_clusters(self):
-        flow_event = FlowEvent(
-            flow_id="12345",
-            source_ip="10.0.0.2",
-            source_port="8080",
-            destination_ip="10.0.0.1",
-            destination_port="443",
-            protocol="6",
-            start_time=datetime(2023, 1, 1, 12),
-            end_time=datetime(2023, 1, 2, 2),
-            anomaly_score=0.6,
-            attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3}
-        )
+        flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
+                               destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
+                               end_time=datetime(2023, 1, 2, 2), anomaly_score=0.6,
+                               attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3})
         old_exploit_1 = FlowExploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
                                     datetime(2023, 1, 1, 11, 1),
                                     datetime(2023, 1, 1, 11, 5), 0.45)
@@ -371,18 +275,10 @@ class TestReconstructionManager(unittest.TestCase):
             self.assertIn(str(old_exploit_3), lines)
 
     def test_accept_clustering_single_attack_type_no_clusters(self):
-        flow_event = FlowEvent(
-            flow_id="12345",
-            source_ip="10.0.0.2",
-            source_port="8080",
-            destination_ip="10.0.0.1",
-            destination_port="443",
-            protocol="6",
-            start_time=datetime(2023, 1, 1, 13),
-            end_time=datetime(2023, 1, 2, 2),
-            anomaly_score=0.6,
-            attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3}
-        )
+        flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
+                               destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 13),
+                               end_time=datetime(2023, 1, 2, 2), anomaly_score=0.6,
+                               attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3})
         old_exploit_1 = FlowExploit(self.attack1, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
                                     datetime(2010, 1, 1, 11, 1),
                                     datetime(2015, 1, 1, 11, 5), 0.45)
@@ -411,18 +307,10 @@ class TestReconstructionManager(unittest.TestCase):
             self.assertIn(str(old_exploit_4), lines)
 
     def test_accept_clustering_multiple_attack_type(self):
-        flow_event = FlowEvent(
-            flow_id="12345",
-            source_ip="10.0.0.2",
-            source_port="8080",
-            destination_ip="10.0.0.1",
-            destination_port="443",
-            protocol="6",
-            start_time=datetime(2023, 1, 1, 13),
-            end_time=datetime(2023, 1, 2, 2),
-            anomaly_score=0.6,
-            attack_scores={"attack_1": 0.2, "attack_2": 0.9, "attack_3": 0.3}
-        )
+        flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
+                               destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 13),
+                               end_time=datetime(2023, 1, 2, 2), anomaly_score=0.6,
+                               attack_scores={"attack_1": 0.2, "attack_2": 0.9, "attack_3": 0.3})
         old_exploit_1 = FlowExploit(self.attack2, "10.0.0.3", "8080", "10.0.0.2", "443", "6",
                                     datetime(2023, 1, 1, 11, 1),
                                     datetime(2023, 1, 1, 11, 5), 0.45)

@@ -7,3 +7,6 @@ TrafficLabelling/
 *.csv
 flows
 dataset
+*.xml
+*.iml
+.idea

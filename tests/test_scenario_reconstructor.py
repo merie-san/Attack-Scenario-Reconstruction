@@ -232,20 +232,20 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
         exploit = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
             2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8)
         self.assertEqual(
-            self.scenario_reconstructor.get_flow_exploit_group_lenght(exploit), 0)
+            self.scenario_reconstructor.get_flow_exploit_group_length(exploit), 0)
         self.scenario_reconstructor.add_flow_exploit(exploit)
         self.assertEqual(
-            self.scenario_reconstructor.get_flow_exploit_group_lenght(exploit), 1)
+            self.scenario_reconstructor.get_flow_exploit_group_length(exploit), 1)
         exploit2 = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
             2026, 6, 11, 10, 30), datetime(2026, 6, 11, 10, 35), 0.9)
         self.scenario_reconstructor.add_flow_exploit(exploit2)
         self.assertEqual(
-            self.scenario_reconstructor.get_flow_exploit_group_lenght(exploit), 2)
+            self.scenario_reconstructor.get_flow_exploit_group_length(exploit), 2)
         exploit3 = FlowExploit(self.attack2, "10.0.0.5", "50001", "10.0.0.1", "40", "6", datetime(
             2026, 6, 11, 10, 30), datetime(2026, 6, 11, 10, 35), 0.9)
         self.scenario_reconstructor.add_flow_exploit(exploit3)
         self.assertEqual(
-            self.scenario_reconstructor.get_flow_exploit_group_lenght(exploit2), 2)
+            self.scenario_reconstructor.get_flow_exploit_group_length(exploit2), 2)
 
     def test_check_exploit_requirements_invalid_ips(self):
         exploit1 = FlowExploit(self.attack1, "10.0.0.53", "50000", "10.0.0.23", "40", "6", datetime(

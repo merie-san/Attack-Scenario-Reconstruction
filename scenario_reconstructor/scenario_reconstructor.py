@@ -47,7 +47,8 @@ class Host:
 
 class AttackType:
 
-    def __init__(self, identifier: str, preconditions: set[Preconditions], postconditions: set[HostAttribute], description: str = ""):
+    def __init__(self, identifier: str, preconditions: set[Preconditions], postconditions: set[HostAttribute],
+                 description: str = ""):
         self.identifier = identifier
         self.description = description
         self.preconditions = preconditions
@@ -82,7 +83,8 @@ class AttackType:
 
 class FlowExploit:
 
-    def __init__(self, attack_type: AttackType, source_ip: str, source_port: str, destination_ip: str, destination_port: str, protocol: str, start_time: datetime, end_time: datetime, anomaly_score: float):
+    def __init__(self, attack_type: AttackType, source_ip: str, source_port: str, destination_ip: str,
+                 destination_port: str, protocol: str, start_time: datetime, end_time: datetime, anomaly_score: float):
         self.attack_type = attack_type
         self.source_ip = source_ip
         self.source_port = source_port
@@ -107,7 +109,8 @@ class FlowExploit:
 
 class Exploit:
 
-    def __init__(self, attack_type: AttackType, size: int, source_ip: str, destination_ip: str, start_time: datetime, end_time: datetime, mean_interflow_time: float, std_interflow_time: float) -> None:
+    def __init__(self, attack_type: AttackType, size: int, source_ip: str, destination_ip: str, start_time: datetime,
+                 end_time: datetime, mean_interflow_time: float, std_interflow_time: float) -> None:
         self.attack_type = attack_type
         self.size = size
         self.destination_ip = destination_ip
@@ -149,7 +152,11 @@ class StringToExploitConverter:
         if attack_type == None:
             raise RuntimeError(
                 "Found attack type not defined in the provided list")
-        return FlowExploit(attack_type, flow_exploit_dict["source_ip"], flow_exploit_dict["source_port"], flow_exploit_dict["destination_ip"], flow_exploit_dict["destination_port"], flow_exploit_dict["protocol"], datetime.fromisoformat(flow_exploit_dict["start_time"]), datetime.fromisoformat(flow_exploit_dict["end_time"]), float(flow_exploit_dict["anomaly_score"]))
+        return FlowExploit(attack_type, flow_exploit_dict["source_ip"], flow_exploit_dict["source_port"],
+                           flow_exploit_dict["destination_ip"], flow_exploit_dict["destination_port"],
+                           flow_exploit_dict["protocol"], datetime.fromisoformat(flow_exploit_dict["start_time"]),
+                           datetime.fromisoformat(flow_exploit_dict["end_time"]),
+                           float(flow_exploit_dict["anomaly_score"]))
 
     def from_str_exploit(self, exploit_str: str) -> Exploit:
         if not exploit_str.startswith("Exploit(") or not exploit_str.endswith(")"):
@@ -166,7 +173,10 @@ class StringToExploitConverter:
         if attack_type == None:
             raise RuntimeError(
                 "Found attack type not defined in the provided list")
-        return Exploit(attack_type, int(exploit_dict["size"]), exploit_dict["source_ip"], exploit_dict["destination_ip"], datetime.fromisoformat(exploit_dict["start_time"]), datetime.fromisoformat(exploit_dict["end_time"]), float(exploit_dict["mean_ift"]), float(exploit_dict["std_ift"]))
+        return Exploit(attack_type, int(exploit_dict["size"]), exploit_dict["source_ip"],
+                       exploit_dict["destination_ip"], datetime.fromisoformat(exploit_dict["start_time"]),
+                       datetime.fromisoformat(exploit_dict["end_time"]), float(exploit_dict["mean_ift"]),
+                       float(exploit_dict["std_ift"]))
 
 
 class ExploitRequirement:
@@ -179,12 +189,13 @@ class ExploitRequirement:
     def __eq__(self, value: object) -> bool:
         if not isinstance(value, ExploitRequirement):
             return False
-        return self.attack_type == value.attack_type and set(self.acceptable_source_ips) == set(value.acceptable_source_ips) and self.acceptable_destination_ip == value.acceptable_destination_ip
+        return self.attack_type == value.attack_type and set(self.acceptable_source_ips) == set(
+            value.acceptable_source_ips) and self.acceptable_destination_ip == value.acceptable_destination_ip
 
     def __hash__(self) -> int:
         src_ips_hash = sum(hash(src_ips)
                            for src_ips in self.acceptable_source_ips)
-        return hash(hash(self.attack_type)+src_ips_hash+hash(self.acceptable_destination_ip))
+        return hash(hash(self.attack_type) + src_ips_hash + hash(self.acceptable_destination_ip))
 
 
 class NetworkState:
@@ -198,8 +209,8 @@ class NetworkState:
         return cls({ip_address: host.compromise_attributes for ip_address, host in host_dict.items()}, timestamp)
 
     def __str__(self) -> str:
-        state = "-".join([f"{ip_addr}={{"+f"{'; '.join([att.value for att in att_set])}" +
-                         "}" for ip_addr, att_set in self.state.items()])
+        state = "-".join([f"{ip_addr}={{" + f"{'; '.join([att.value for att in att_set])}" +
+                          "}" for ip_addr, att_set in self.state.items()])
         return f"NetworkState(state={{{state}}}, time={self.transition_time.isoformat()})"
 
     def __eq__(self, value: object) -> bool:
@@ -252,7 +263,9 @@ class StringToNetworkStateConvertor:
 
 class StarNetworkAttackGraphBasedScenarioReconstructor:
 
-    def __init__(self, internal_hosts: list[Host], external_host_attributes: set[HostAttribute], attack_types: list[AttackType], exploit_log_path: str, flow_exploit_log_path: str, state_log_path: str, correlation_log_path: str):
+    def __init__(self, internal_hosts: list[Host], external_host_attributes: set[HostAttribute],
+                 attack_types: list[AttackType], exploit_log_path: str, flow_exploit_log_path: str, state_log_path: str,
+                 correlation_log_path: str):
         self.host_dict = {host.ip_address: host for host in internal_hosts}
         self.external_host_attributes = external_host_attributes
         self.seen_external_hosts_dict = {}
@@ -265,6 +278,13 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
             self.host_dict, datetime.min)
         self.state_sequence = [initial_state]
         self.correlation_sequence: list[str] = []
+        self.state_log_path = state_log_path
+        self.correlation_log_path = correlation_log_path
+
+    def change_log_paths(self, exploit_log_path: str, flow_exploit_log_path: str, state_log_path: str,
+                         correlation_log_path: str) -> None:
+        self.exploit_log_path = exploit_log_path
+        self.flow_exploit_log_path = flow_exploit_log_path
         self.state_log_path = state_log_path
         self.correlation_log_path = correlation_log_path
 
@@ -368,18 +388,19 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
 
         for ip_addr, host in complete_host_dict.items():
             for attack_type in green_attacks:
-                not_statisfied = False
+                not_satisfied = False
                 blue_host_conditions, red_host_conditions = attack_type.get_preconditions()
                 for precondition in blue_host_conditions:
                     if len(host.get_compromise_attributes().intersection(precondition.compromise_attributes)) == 0:
-                        not_statisfied = True
+                        not_satisfied = True
                         break
-                if not not_statisfied:
+                if not not_satisfied:
                     for precondition in red_host_conditions:
-                        if len(red_host.get_compromise_attributes().intersection(precondition.compromise_attributes)) == 0:
-                            not_statisfied = True
+                        if len(red_host.get_compromise_attributes().intersection(
+                                precondition.compromise_attributes)) == 0:
+                            not_satisfied = True
                             break
-                if not not_statisfied:
+                if not not_satisfied:
                     blue_dict[ip_addr].append(attack_type)
 
         n = sum(len(final_attacks)
@@ -396,9 +417,8 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
                     blue_ips.append(ip_addr)
 
             if len(blue_ips) > 0:
-
                 result.add(ExploitRequirement(attack_type, blue_ips,
-                           red_ip))
+                                              red_ip))
 
         return result
 
@@ -428,32 +448,55 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
 
     def add_correlation(self, flow_exploit: FlowExploit):
         self.correlation_sequence.append(
-            flow_exploit.get_flow_exploit_group_id())
+            f"{flow_exploit.get_flow_exploit_group_id()}-{flow_exploit.start_time.isoformat()}")
 
     def log_exploits(self, ref_flow_exploit: FlowExploit):
-        if ref_flow_exploit.get_flow_exploit_group_id() not in self.flow_exploits_dict or ref_flow_exploit.get_flow_exploit_group_id() not in self.exploits_dict or len(self.exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]) == 0 or len(self.flow_exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]) == 0:
+        if ref_flow_exploit.get_flow_exploit_group_id() not in self.flow_exploits_dict or ref_flow_exploit.get_flow_exploit_group_id() not in self.exploits_dict or len(
+                self.exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]) == 0 or len(
+            self.flow_exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]) == 0:
             raise RuntimeError(
                 "Tried to log exploits while not having any exploit")
         with open(self.flow_exploit_log_path, "a") as f_log:
-            f_log.write(ref_flow_exploit.get_flow_exploit_group_id()+"\n")
+            f_log.write(ref_flow_exploit.get_flow_exploit_group_id() + "\n")
             for exploit in self.flow_exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]:
-                f_log.write(str(exploit)+"\n")
+                f_log.write(str(exploit) + "\n")
             f_log.write("\n")
             self.flow_exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()] = [
             ]
 
         with open(self.exploit_log_path, "a") as e_log:
-            e_log.write(ref_flow_exploit.get_flow_exploit_group_id()+"\n")
+            e_log.write(ref_flow_exploit.get_flow_exploit_group_id() + "\n")
             for exploit in self.exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]:
-                e_log.write(str(exploit)+"\n")
+                e_log.write(str(exploit) + "\n")
             e_log.write("\n")
             self.exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()] = [
             ]
 
-    def get_flow_exploit_group_lenght(self, ref_flow_exploit: FlowExploit) -> int:
-        return len(self.flow_exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]) if ref_flow_exploit.get_flow_exploit_group_id() in self.flow_exploits_dict else 0
+    def return_exploits(self) -> dict[str, list[Exploit]]:
+        res = self.exploits_dict
+        self.exploits_dict = {}
+        return res
 
-    def get_state_sequence_lenght(self):
+    def return_flow_exploits(self) -> dict[str, list[FlowExploit]]:
+        res = self.flow_exploits_dict
+        self.flow_exploits_dict = {}
+        return res
+
+    def return_states(self) -> list[NetworkState]:
+        res = self.state_sequence
+        self.state_sequence = []
+        return res
+
+    def return_correlations(self) -> list[str]:
+        res = self.correlation_sequence
+        self.correlation_sequence = []
+        return res
+
+    def get_flow_exploit_group_length(self, ref_flow_exploit: FlowExploit) -> int:
+        return len(self.flow_exploits_dict[
+                       ref_flow_exploit.get_flow_exploit_group_id()]) if ref_flow_exploit.get_flow_exploit_group_id() in self.flow_exploits_dict else 0
+
+    def get_state_sequence_length(self):
         return len(self.state_sequence)
 
     def update_network_state(self, flow_exploit: FlowExploit):
@@ -461,7 +504,8 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
             self.host_dict, flow_exploit.end_time))
 
     def update_exploits(self, ref_flow_exploit: FlowExploit):
-        if ref_flow_exploit.get_flow_exploit_group_id() not in self.flow_exploits_dict or len(self.flow_exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]) == 0:
+        if ref_flow_exploit.get_flow_exploit_group_id() not in self.flow_exploits_dict or len(
+                self.flow_exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]) == 0:
             raise RuntimeError(
                 "Tried to build Exploit objects out of an empty flow exploit dict")
         flow_exploits = self.flow_exploits_dict[ref_flow_exploit.get_flow_exploit_group_id(
@@ -480,22 +524,24 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
             group = group.sort_values("start_time")
             starts = group["start_time"].to_numpy()
             ends = group["end_time"].to_numpy()
-            intervals = starts[1:]-ends[:-1]
+            intervals = starts[1:] - ends[:-1]
             exploits.append(Exploit(ref_flow_exploit.attack_type, len(group), ref_flow_exploit.source_ip,
-                            ref_flow_exploit.destination_ip, datetime.fromtimestamp(min(group["start_time"])), datetime.fromtimestamp(max(group["end_time"])), intervals.mean(), intervals.std()))
+                                    ref_flow_exploit.destination_ip, datetime.fromtimestamp(min(group["start_time"])),
+                                    datetime.fromtimestamp(max(group["end_time"])), intervals.mean(), intervals.std()))
 
         for _, flow_exploit in noise.iterrows():
             exploits.append(Exploit(ref_flow_exploit.attack_type, 1, ref_flow_exploit.source_ip,
-                            ref_flow_exploit.destination_ip, datetime.fromtimestamp(flow_exploit["start_time"]), datetime.fromtimestamp(flow_exploit["end_time"]), -1, -1))
+                                    ref_flow_exploit.destination_ip, datetime.fromtimestamp(flow_exploit["start_time"]),
+                                    datetime.fromtimestamp(flow_exploit["end_time"]), -1, -1))
         exploits.sort(key=lambda ex: ex.start_time)
         self.exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()
-                           ] = exploits
+        ] = exploits
 
     def log_states(self):
         with open(self.state_log_path, "a") as s_f:
             for network_state in self.state_sequence:
-                s_f.write(str(network_state)+"\n")
+                s_f.write(str(network_state) + "\n")
         self.state_sequence = []
         with open(self.correlation_log_path, "a") as c_f:
             for correlation in self.correlation_sequence:
-                c_f.write(correlation+"\n")
+                c_f.write(correlation + "\n")
