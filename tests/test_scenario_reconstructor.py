@@ -372,7 +372,7 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
             2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 35), 0.8)
         self.scenario_reconstructor.add_correlation(exploit1)
         self.assertEqual(
-            self.scenario_reconstructor.correlation_sequence[-1], "port_scanning-10.0.0.1-10.0.0.5")
+            self.scenario_reconstructor.correlation_sequence[-1], "port_scanning-10.0.0.1-10.0.0.5-2026-06-10T10:30:00")
 
     def test_log_empty(self):
         f_exploit1 = FlowExploit(self.attack2, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(

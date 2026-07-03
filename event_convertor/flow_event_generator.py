@@ -1,26 +1,20 @@
 import pandas as pd
 from event_convertor.flow_event import FlowEvent
 from datetime import timedelta
-from pathlib import Path
 
 
-class CICIDSFlowEventConvertor:
+class cAPTureFlowEventConvertor:
 
-    def __init__(self, df: pd.DataFrame):
-        df["Timestamp"] = pd.to_datetime(
-            df["Timestamp"], dayfirst=True, format='mixed')
-        self.df = df
-
-    def convert_and_persist(self, log_path: str | Path):
-        with open(log_path, "w") as log:
-            for _, row in self.df.iterrows():
-                event = FlowEvent(row["Source IP"], row["Source Port"], row["Destination IP"], row["Destination Port"],
-                                  row["Protocol"], row["Timestamp"],
-                                  row["Timestamp"] + timedelta(milliseconds=row["Flow Duration"]), row["Anomaly Score"],
-                                  {
-                                      "DoS Hulk": row["DoS Hulk"], "PortScan": row["PortScan"], "DDoS": row["DDoS"],
-                                      "DoS GoldenEye": row["DoS GoldenEye"], "FTP-Patator": row["FTP-Patator"],
-                                      "SSH-Patator": row["SSH-Patator"], "DoS slowloris": row["DoS slowloris"],
-                                      "DoS Slowhttptest": row["DoS Slowhttptest"], "Bot": row["Bot"],
-                                      "Web Attack  Brute Force": row["Web Attack  Brute Force"]})
-                log.write(str(event)+'\n')
+    def convert(self, df: pd.DataFrame) -> list[FlowEvent]:
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        flow_events = []
+        for _, row in df.iterrows():
+            flow_events.append(FlowEvent(row["src_ip"], row["src_port"], row["dst_ip"], row["dst_port"],
+                                         row["protocol"], row["timestamp"],
+                                         row["timestamp"] + timedelta(
+                                             milliseconds=row["duration"]), row["anomaly_score"],
+                                         {
+                "nmap_10_T5": row["nmap_10_T5"], "nmap_mqtt": row["nmap_mqtt"], "nmap_banner": row["nmap_banner"],
+                "brute_force_malformed": row["brute_force_malformed"], "dollar_char": row["dollar_char"],
+                "scp_inst": row["scp_inst"]}))
+        return flow_events

@@ -3,7 +3,7 @@ from enum import Enum
 from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
-from typing import TypeVar, Generic
+from typing import TypeVar
 
 
 class HostAttribute(Enum):
@@ -43,6 +43,9 @@ class Host:
 
     def get_compromise_attributes(self) -> set[HostAttribute]:
         return self.compromise_attributes
+    
+    def reset_attributes(self):
+        self.compromise_attributes = set()
 
 
 class AttackType:
@@ -281,6 +284,17 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
         self.state_log_path = state_log_path
         self.correlation_log_path = correlation_log_path
 
+    def reset(self):
+        for host in self.host_dict.values():
+            host.reset_attributes()
+        self.seen_external_hosts_dict = {}
+        self.flow_exploits_dict = {}
+        self.exploits_dict = {}
+        initial_state = NetworkState.from_dict_of_host(
+            self.host_dict, datetime.min)
+        self.state_sequence = [initial_state]
+        self.correlation_sequence = []
+
     def change_log_paths(self, exploit_log_path: str, flow_exploit_log_path: str, state_log_path: str,
                          correlation_log_path: str) -> None:
         self.exploit_log_path = exploit_log_path
@@ -473,24 +487,16 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
             ]
 
     def return_exploits(self) -> dict[str, list[Exploit]]:
-        res = self.exploits_dict
-        self.exploits_dict = {}
-        return res
+        return self.exploits_dict
 
     def return_flow_exploits(self) -> dict[str, list[FlowExploit]]:
-        res = self.flow_exploits_dict
-        self.flow_exploits_dict = {}
-        return res
+        return self.flow_exploits_dict
 
     def return_states(self) -> list[NetworkState]:
-        res = self.state_sequence
-        self.state_sequence = []
-        return res
+        return self.state_sequence
 
     def return_correlations(self) -> list[str]:
-        res = self.correlation_sequence
-        self.correlation_sequence = []
-        return res
+        return self.correlation_sequence
 
     def get_flow_exploit_group_length(self, ref_flow_exploit: FlowExploit) -> int:
         return len(self.flow_exploits_dict[
