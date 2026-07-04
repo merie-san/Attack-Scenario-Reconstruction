@@ -1,4 +1,4 @@
-from scenario_generator.scenario_generator import cAPTureScenarioGenerator
+from scenario_generator.scenario_generator import CAPTureScenarioGenerator
 import unittest
 from datetime import datetime, timedelta
 import pandas as pd
@@ -15,7 +15,7 @@ class TestScenarioGenerator(unittest.TestCase):
                                        "src_ip": ["10.0.0.1"]*20,
                                        "dst_ip": ["10.0.0.10"]*20
                                        })
-        self.generator = cAPTureScenarioGenerator(
+        self.generator = CAPTureScenarioGenerator(
             dataframe=self.source_df,
             next_attack_dict={"start": ["rec"], "rec": ["rec", "bru"], "bru": [
                 "dis"], "dis": ["dis", "ins"], "ins": ["imp"], "imp": ["end"]},
@@ -42,6 +42,7 @@ class TestScenarioGenerator(unittest.TestCase):
             df["timestamp"] = df["timestamp"] + delta
             df["src_ip"] = self.generator.attack_ips[i][0]
             df["dst_ip"] = self.generator.attack_ips[i][1]
+            df["step_number"] = i
             df_list.append(df)
         res_df = pd.concat(df_list+[self.source_df[self.source_df["label"] == "normal"]],
                            ignore_index=True).sort_values("timestamp").reset_index(drop=True)

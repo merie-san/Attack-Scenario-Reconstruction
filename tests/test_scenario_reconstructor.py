@@ -96,16 +96,16 @@ class TestHost(unittest.TestCase):
 class TestAttackType(unittest.TestCase):
 
     def setUp(self):
-        self.attack_type = AttackType("nmap_port_scan", set(), set(
-            [TestHostCompromiseAttributeImplementation.HOST_DISCOVERED]))
+        self.attack_type = AttackType("nmap_port_scan", set(),
+                                      {TestHostCompromiseAttributeImplementation.HOST_DISCOVERED})
 
     def test_eq(self):
         self.assertNotEqual(self.attack_type, AttackType(
             "nmap_port_scan", set(), set()))
         self.assertNotEqual(self.attack_type, AttackType(
-            "host_scan", set(), set([TestHostCompromiseAttributeImplementation.HOST_DISCOVERED])))
-        self.assertEqual(self.attack_type, AttackType("nmap_port_scan", set(), set(
-            [TestHostCompromiseAttributeImplementation.HOST_DISCOVERED])))
+            "host_scan", set(), {TestHostCompromiseAttributeImplementation.HOST_DISCOVERED}))
+        self.assertEqual(self.attack_type, AttackType("nmap_port_scan", set(),
+                                                      {TestHostCompromiseAttributeImplementation.HOST_DISCOVERED}))
 
     def test_str(self):
         self.assertEqual(str(self.attack_type), "nmap_port_scan")
@@ -114,8 +114,8 @@ class TestAttackType(unittest.TestCase):
         src_cond, dst_cond = self.attack_type.get_preconditions()
         self.assertEqual(len(src_cond), 0)
         self.assertEqual(len(dst_cond), 0)
-        new_attack = AttackType("nmap_port_scan", {Preconditions({TestHostCompromiseAttributeImplementation.HOST_COMPROMISED}, True), Preconditions({TestHostCompromiseAttributeImplementation.PORT_SCANNED}, False)}, set(
-            [TestHostCompromiseAttributeImplementation.HOST_DISCOVERED]))
+        new_attack = AttackType("nmap_port_scan", {Preconditions({TestHostCompromiseAttributeImplementation.HOST_COMPROMISED}, True), Preconditions({TestHostCompromiseAttributeImplementation.PORT_SCANNED}, False)},
+                                {TestHostCompromiseAttributeImplementation.HOST_DISCOVERED})
         src_cond, dst_cond = new_attack.get_preconditions()
         self.assertEqual(len(src_cond), 1)
         self.assertIn(Preconditions(
@@ -197,6 +197,8 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
             os.remove("./flow_exploits.log")
         if os.path.exists("./states.log"):
             os.remove("./states.log")
+        if os.path.exists("./correlations.log"):
+            os.remove("./correlations.log")
 
     def test_check_preconditions(self):
         exploit = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
@@ -455,7 +457,6 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
             ex2, ex_new]
 
         self.scenario_reconstructor.log_exploits(flow_ex2)
-
         with open("./flow_exploits.log", "r") as e_l:
             lines = e_l.readlines()
             self.assertEqual(len(lines), 4)
@@ -506,9 +507,9 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
         self.assertEqual(len(
             self.scenario_reconstructor.exploits_dict["host_discovery-10.0.0.1-10.0.0.5"]), 2)
         self.assertIn(Exploit(self.attack1, 1, "10.0.0.5", "10.0.0.1", datetime(
-            2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 33), -1, -1), self.scenario_reconstructor.exploits_dict["host_discovery-10.0.0.1-10.0.0.5"])
+            2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 30), -1, -1), self.scenario_reconstructor.exploits_dict["host_discovery-10.0.0.1-10.0.0.5"])
         self.assertIn(Exploit(self.attack1, 4, "10.0.0.5", "10.0.0.1", datetime(
-            2026, 6, 10, 10, 1), datetime(2026, 6, 10, 10, 4, 55), np.array([30, 30, 10]).mean(), np.array([30, 30, 10]).std()), self.scenario_reconstructor.exploits_dict["host_discovery-10.0.0.1-10.0.0.5"])
+            2026, 6, 10, 10, 1), datetime(2026, 6, 10, 10, 4), np.array([30, 30, 10]).mean(), np.array([30, 30, 10]).std()), self.scenario_reconstructor.exploits_dict["host_discovery-10.0.0.1-10.0.0.5"])
 
 
 if __name__ == '__main__':

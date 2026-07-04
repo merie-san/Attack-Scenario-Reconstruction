@@ -3,7 +3,7 @@ from scenario_reconstructor.scenario_reconstructor import FlowExploit, AttackTyp
 from scenario_reconstructor.attack_mapper import AttackMapper
 from event_convertor.flow_event import FlowEvent
 from pathlib import Path
-from typing import List
+from typing import List, cast
 import pandas as pd
 import numpy as np
 from sklearn.cluster import DBSCAN
@@ -54,7 +54,7 @@ class ScenarioReconstructionManager:
 
         indices = clusters[clusters["step_number"] == latest_cluster_id].index
 
-        most_recent_flows = [flow_exploit_list[i] for i in indices]
+        most_recent_flows = [flow_exploit_list[cast(int, i)] for i in indices]
 
         mean_anomaly_score = sum(
             recent_flow.anomaly_score for recent_flow in most_recent_flows) / len(most_recent_flows)
@@ -63,23 +63,25 @@ class ScenarioReconstructionManager:
 
     def __init__(self, reconstructor: StarNetworkAttackGraphBasedScenarioReconstructor, mapper: AttackMapper,
                  anomaly_threshold: float, exploit_threshold: float, unknown_attack: AttackType,
-                 fn_log_path: str | Path, fp_log_path: str | Path, lenght_when_log_states: int = 100,
-                 lenght_when_log_flow_exploits: int = 100, suspect_list_max_lenght: int = 100) -> None:
+                 length_when_log_states: int = -1,
+                 length_when_log_exploits: int = -1, suspect_list_max_length: int = -1) -> None:
         self.generator = ExploitGenerator(
             mapper, anomaly_threshold, unknown_attack)
         self.ex_threshold = exploit_threshold
         self.an_threshold = anomaly_threshold
         self.reconstructor = reconstructor
         self.suspect_dict: dict[str, list[FlowExploit]] = {}
-        self.fn_log_path = fn_log_path
-        self.fp_log_path = fp_log_path
-        self.lenght_when_log_states = lenght_when_log_states
-        self.lenght_when_log_exploits = lenght_when_log_flow_exploits
-        self.suspect_list_max_lenght = suspect_list_max_lenght
+        self.length_when_log_states = length_when_log_states
+        self.length_when_log_exploits = length_when_log_exploits
+        self.suspect_list_max_length = suspect_list_max_length
+        self.fps=[]
+        self.fns=[]
 
-    def change_log_paths(self, fn_log_path: str | Path, fp_log_path: str | Path) -> None:
-        self.fn_log_path = fn_log_path
-        self.fp_log_path = fp_log_path
+    def get_fps(self) -> list[FlowExploit]:
+        return self.fps
+
+    def get_fns(self)-> list[FlowExploit]:
+        return self.fns
 
     def accept(self, event: FlowEvent):
         if event.anomaly_score > self.an_threshold:
@@ -105,8 +107,7 @@ class ScenarioReconstructionManager:
                                     investigation_dict[group_id] = suspect_list
 
                         if len(investigation_dict) == 0:
-                            with open(self.fp_log_path, "a") as log:
-                                log.write(str(anomaly) + "\n")
+                            self.fps.append(anomaly)
 
                         highest_score = 0
                         fns = []
@@ -124,17 +125,15 @@ class ScenarioReconstructionManager:
                             if group_id.split("-")[0] == chosen_attack:
                                 self.suspect_dict[group_id] = []
 
-                        with open(self.fn_log_path, "a") as log:
-                            for fn in fns:
-                                log.write(str(fn) + "\n")
-                                self._add_to_reconstructor(fn)
-                                self._check_and_log(fn)
-                            self._add_to_reconstructor(anomaly)
-                            self._check_and_log(anomaly)
+                        self.fns.extend(fns)
+                        for fn in fns:
+                            self._add_to_reconstructor(fn)
+                            self._check_and_log(fn)
+                        self._add_to_reconstructor(anomaly)
+                        self._check_and_log(anomaly)
 
                     else:
-                        with open(self.fp_log_path, "a") as log:
-                            log.write(str(anomaly) + "\n")
+                        self.fps.append(anomaly)
             else:
                 group_id = anomaly.get_flow_exploit_group_id()
                 if group_id in self.suspect_dict:
@@ -142,9 +141,9 @@ class ScenarioReconstructionManager:
                         anomaly)
                 else:
                     self.suspect_dict[group_id] = [anomaly]
-                if len(self.suspect_dict[anomaly.get_flow_exploit_group_id()]) > self.suspect_list_max_lenght:
+                if len(self.suspect_dict[anomaly.get_flow_exploit_group_id()]) > self.suspect_list_max_length  != -1:
                     self.suspect_dict[anomaly.get_flow_exploit_group_id(
-                    )] = self.suspect_dict[anomaly.get_flow_exploit_group_id()][self.suspect_list_max_lenght // 2:]
+                    )] = self.suspect_dict[anomaly.get_flow_exploit_group_id()][self.suspect_list_max_length // 2:]
 
     def _add_to_reconstructor(self, anomaly: FlowExploit):
         self.reconstructor.add_flow_exploit(anomaly)
@@ -154,13 +153,14 @@ class ScenarioReconstructionManager:
             self.reconstructor.add_correlation(anomaly)
 
     def _check_and_log(self, anomaly: FlowExploit):
-        if self.reconstructor.get_flow_exploit_group_length(anomaly) > self.lenght_when_log_exploits:
+        if self.reconstructor.get_flow_exploit_group_length(anomaly) > self.length_when_log_exploits  != -1:
             self.reconstructor.update_exploits(anomaly)
             self.reconstructor.log_exploits(anomaly)
-        if self.reconstructor.get_state_sequence_length() > self.lenght_when_log_states:
+        if self.reconstructor.get_state_sequence_length() > self.length_when_log_states != -1:
             self.reconstructor.log_states()
 
     def get_results(self) -> tuple[list[Exploit], list[FlowExploit]]:
+        self.reconstructor.update_exploits_all()
         exploits_dict = self.reconstructor.return_exploits()
         flow_exploits_dict = self.reconstructor.return_flow_exploits()
         detected_attack_steps = []

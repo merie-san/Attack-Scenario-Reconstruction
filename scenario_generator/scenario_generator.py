@@ -1,6 +1,6 @@
 from collections.abc import Hashable
-from scenario_reconstructor.exploit_manager import Exploit, FlowExploit, AttackType, AttackMapper
-from event_convertor.flow_event_generator import cAPTureFlowEventConvertor
+from scenario_reconstructor.reconstruction_manager import Exploit, FlowExploit, AttackType, AttackMapper
+from event_convertor.flow_event_generator import CAPTureFlowEventConvertor
 import random
 from datetime import timedelta, datetime
 import pandas as pd
@@ -8,9 +8,12 @@ import numpy as np
 import copy
 
 
-class cAPTureScenarioGenerator:
+class CAPTureScenarioGenerator:
 
-    def __init__(self, dataframe: pd.DataFrame, next_attack_dict: dict[str, list[str]], ip_list: list[str], enable_src_for: dict[str, list[str]], enable_dst_for: dict[str, list[str]], possible_srcs: dict[str, list[str]], possible_dsts: dict[str, list[str]], dst_restricted_atks: dict[str, list[str]], final_atk: str, enabling_atk: str) -> None:
+    def __init__(self, dataframe: pd.DataFrame, next_attack_dict: dict[str, list[str]], ip_list: list[str],
+                 enable_src_for: dict[str, list[str]], enable_dst_for: dict[str, list[str]],
+                 possible_srcs: dict[str, list[str]], possible_dsts: dict[str, list[str]],
+                 dst_restricted_atks: dict[str, list[str]], final_atk: str, enabling_atk: str) -> None:
         self.data_source: dict[Hashable, dict[Hashable, pd.DataFrame]] = {}
         self.result: pd.DataFrame = pd.DataFrame()
         self.enable_src_for = enable_src_for
@@ -33,7 +36,7 @@ class cAPTureScenarioGenerator:
         self.final_atk = final_atk
         self.enabling_atk = enabling_atk
 
-    def generate_scenario(self) -> pd.DataFrame:
+    def generate_scenario(self, normal_flow_number_divisor: int = 1) -> pd.DataFrame:
         scenario = []
         src_dst_ips = []
         srt_end_times = []
@@ -63,9 +66,14 @@ class cAPTureScenarioGenerator:
                     raise RuntimeError(
                         f"No possible destination IPs found for {current_attack}")
                 while True:
-                    dst_ip = random.choice([dst for dst in possible_dsts_list if dst != src_ip] if current_attack not in self.dst_restricted_atks else [
-                                           dst for dst in possible_dsts_list if dst != src_ip and dst in self.dst_restricted_atks[current_attack]])
-                    if current_attack != self.enabling_atk or self.final_atk not in self.dst_restricted_atks or dst_ip in self.dst_restricted_atks[self.final_atk] or any([rqd_dst_ip in possible_dsts[self.final_atk] for rqd_dst_ip in self.dst_restricted_atks[self.final_atk]]):
+                    dst_ip = random.choice([dst for dst in possible_dsts_list if
+                                            dst != src_ip] if current_attack not in self.dst_restricted_atks else [
+                        dst for dst in possible_dsts_list if
+                        dst != src_ip and dst in self.dst_restricted_atks[current_attack]])
+                    if current_attack != self.enabling_atk or self.final_atk not in self.dst_restricted_atks or dst_ip in \
+                            self.dst_restricted_atks[self.final_atk] or any(
+                            [rqd_dst_ip in possible_dsts[self.final_atk] for rqd_dst_ip in
+                             self.dst_restricted_atks[self.final_atk]]):
                         break
 
                 if current_attack in self.enable_src_for:
@@ -93,26 +101,30 @@ class cAPTureScenarioGenerator:
             sizes.append(df.shape[0])
             df["src_ip"] = src_ip
             df["dst_ip"] = dst_ip
+            df["step_number"] = i
             noise_t = timedelta(seconds=int(np.round(np.random.normal(
                 10, 2)).astype(int)) if len(df_list) > 0 else 0)
 
             if i == 0:
                 delta_t = self.data_source["normal"][-1].iloc[0]["timestamp"] - \
-                    df.iloc[0]["timestamp"]
+                          df.iloc[0]["timestamp"]
             else:
                 delta_t = df_list[-1].iloc[-1]["timestamp"] - \
-                    df.iloc[0]["timestamp"]
+                          df.iloc[0]["timestamp"]
 
             df["timestamp"] = df["timestamp"] + delta_t + noise_t
-            srt_end_times.append((df.iloc[0]["timestamp"], df.iloc[-1]["timestamp"] + timedelta(
-                milliseconds=int(df.iloc[-1]["duration"]))))
+            srt_end_times.append((df.iloc[0]["timestamp"], df.iloc[-1]["timestamp"]))
             df_list.append(df)
-            starts = df["timestamp"].to_numpy()
-            ends = (df["timestamp"] + timedelta(
-                milliseconds=int(df.iloc[-1]["duration"]))).to_numpy()
-            intervals = starts[1:] - ends[:-1]
-            ift_mean.append(intervals.mean())
-            ift_std.append(intervals.std())
+            if df.shape[0] > 1:
+                starts = df["timestamp"]
+                ends = df["timestamp"] + pd.to_timedelta(df["duration"], unit="ms")
+                intervals = starts[1:] - ends[:-1]
+                intervals = intervals.dt.total_seconds()
+                ift_mean.append(intervals.mean())
+                ift_std.append(intervals.std())
+            else:
+                ift_mean.append(-1)
+                ift_std.append(-1)
 
         self.attack_names = scenario
         self.step_id_list = step_id_list
@@ -121,13 +133,15 @@ class cAPTureScenarioGenerator:
         self.sizes = sizes
         self.ift_mean = ift_mean
         self.ift_std = ift_std
-        self.result = pd.concat(df_list+[self.data_source["normal"][-1]],
-                                ignore_index=True).sort_values("timestamp").reset_index(drop=True)
+        self.result = pd.concat(
+            df_list + [self.data_source["normal"][-1][self.data_source["normal"][-1].index % normal_flow_number_divisor == 0]],
+            ignore_index=True).sort_values("timestamp").reset_index(drop=True)
         return self.result
 
-    def export_results(self, attack_types: list[AttackType], attack_mapper: AttackMapper) -> tuple[list[Exploit], list[FlowExploit]]:
-        detected_attack_steps = []
-        final_alerts = []
+    def export_results(self, attack_types: list[AttackType], attack_mapper: AttackMapper) -> tuple[
+        list[Exploit], list[FlowExploit]]:
+        attack_steps = []
+        alerts = []
         for i in range(len(self.attack_names)):
             attack_name = self.attack_names[i]
             start_time, end_time = self.attack_times[i]
@@ -137,11 +151,11 @@ class cAPTureScenarioGenerator:
             ift_std = self.ift_std[i]
             attack = next(
                 (atk for atk in attack_types if atk.identifier == attack_name))
-            detected_attack_steps.append(
+            attack_steps.append(
                 Exploit(attack, size, src_ip, dst_ip, start_time, end_time, ift_mean, ift_std))
         alert_flows = self.result[self.result["label"] != "normal"]
-        flow_event_generator = cAPTureFlowEventConvertor()
+        flow_event_generator = CAPTureFlowEventConvertor()
         alert_flow_events = flow_event_generator.convert(alert_flows)
         for f_e in alert_flow_events:
-            final_alerts.append(attack_mapper.map(f_e))
-        return detected_attack_steps, final_alerts
+            alerts.append(attack_mapper.map(f_e))
+        return attack_steps, alerts

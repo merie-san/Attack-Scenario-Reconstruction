@@ -3,7 +3,7 @@ from event_convertor.flow_event import FlowEvent
 from datetime import timedelta
 
 
-class cAPTureFlowEventConvertor:
+class CAPTureFlowEventConvertor:
 
     def convert(self, df: pd.DataFrame) -> list[FlowEvent]:
         df["timestamp"] = pd.to_datetime(df["timestamp"])

@@ -1,8 +1,8 @@
 import unittest
-from scenario_reconstructor.scenario_reconstructor import FlowExploit, AttackType, StarNetworkAttackGraphBasedScenarioReconstructor, ExploitRequirement, Preconditions, HostAttribute, Host
+from scenario_reconstructor.scenario_reconstructor import FlowExploit, AttackType, StarNetworkAttackGraphBasedScenarioReconstructor, Preconditions, HostAttribute, Host
 from scenario_reconstructor.attack_mapper import AttackMapper
 from event_convertor.flow_event import FlowEvent
-from scenario_reconstructor.exploit_manager import ExploitGenerator, ScenarioReconstructionManager
+from scenario_reconstructor.reconstruction_manager import ExploitGenerator, ScenarioReconstructionManager
 from datetime import datetime
 import os
 
@@ -83,17 +83,13 @@ class TestReconstructionManager(unittest.TestCase):
         self.exploit_generator = ExploitGenerator(
             self.mapper, 0.1, self.zero_day)
         self.reconstruction_manager = ScenarioReconstructionManager(
-            self.scenario_reconstructor, self.mapper, self.anomaly_threshold, self.exploit_threshold, self.zero_day, "./fns.log", "./fps.log")
+            self.scenario_reconstructor, self.mapper, self.anomaly_threshold, self.exploit_threshold, self.zero_day, 100,100, 100)
 
     def tearDown(self) -> None:
         if os.path.exists("./exploits.log"):
             os.remove("./exploits.log")
         if os.path.exists("./states.log"):
             os.remove("./states.log")
-        if os.path.exists("./fps.log"):
-            os.remove("./fps.log")
-        if os.path.exists("./fns.log"):
-            os.remove("./fns.log")
 
     def test_accept_anomaly_added(self):
         flow_event = FlowEvent(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
@@ -130,8 +126,8 @@ class TestReconstructionManager(unittest.TestCase):
         self.assertEqual(
             self.scenario_reconstructor.flow_exploits_dict["attack_2-10.0.0.1-10.0.0.3"][-1], exploit)
         self.assertEqual(len(self.scenario_reconstructor.state_sequence), 2)
-        self.reconstruction_manager.lenght_when_log_states = 1
-        self.reconstruction_manager.lenght_when_log_exploits = 1
+        self.reconstruction_manager.length_when_log_states = 1
+        self.reconstruction_manager.length_when_log_exploits = 1
         exploit = FlowExploit(self.attack2, "10.0.0.3", "8080", "10.0.0.1", "443", "6",
                               datetime(2023, 1, 1, 12),
                               datetime(2023, 1, 2, 2), 0.6)
@@ -153,11 +149,9 @@ class TestReconstructionManager(unittest.TestCase):
                               datetime(2023, 1, 1, 12),
                               datetime(2023, 1, 2, 2), 0.6)
         self.reconstruction_manager.accept(flow_event)
-        self.assertTrue(os.path.exists("./fps.log"))
-        with open("./fps.log", "r") as fplog:
-            lines = [str.strip() for str in fplog.readlines()]
-            self.assertEqual(len(lines), 1)
-            self.assertIn(str(exploit), lines)
+        fps=self.reconstruction_manager.get_fps()
+        self.assertEqual(len(fps), 1)
+        self.assertIn(exploit,fps)
 
     def test_accept_no_anomaly_sat_req_found(self):
         flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
@@ -168,11 +162,9 @@ class TestReconstructionManager(unittest.TestCase):
                               datetime(2023, 1, 1, 12),
                               datetime(2023, 1, 2, 2), 0.6)
         self.reconstruction_manager.accept(flow_event)
-        self.assertTrue(os.path.exists("./fps.log"))
-        with open("./fps.log", "r") as fplog:
-            lines = [str.strip() for str in fplog.readlines()]
-            self.assertEqual(len(lines), 1)
-            self.assertIn(str(exploit), lines)
+        fps=self.reconstruction_manager.get_fps()
+        self.assertEqual(len(fps), 1)
+        self.assertIn(exploit,fps)
 
     def test_accept_single_sat_found(self):
         flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
@@ -185,11 +177,9 @@ class TestReconstructionManager(unittest.TestCase):
         self.reconstruction_manager.suspect_dict[old_exploit.get_flow_exploit_group_id(
         )] = [old_exploit]
         self.reconstruction_manager.accept(flow_event)
-        self.assertTrue(os.path.exists("./fns.log"))
-        with open("./fns.log", "r") as fnlog:
-            lines = [str.strip() for str in fnlog.readlines()]
-            self.assertEqual(len(lines), 1)
-            self.assertIn(str(old_exploit), lines)
+        fns = self.reconstruction_manager.get_fns()
+        self.assertEqual(len(fns), 1)
+        self.assertIn(old_exploit, fns)
 
     def test_accept_zero_day(self):
         flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
@@ -234,11 +224,9 @@ class TestReconstructionManager(unittest.TestCase):
         self.reconstruction_manager.suspect_dict[old_exploit_4.get_flow_exploit_group_id(
         )].append(old_exploit_4)
         self.reconstruction_manager.accept(flow_event)
-        self.assertTrue(os.path.exists("./fns.log"))
-        with open("./fns.log", "r") as fnlog:
-            lines = [str.strip() for str in fnlog.readlines()]
-            self.assertEqual(len(lines), 1)
-            self.assertIn(str(old_exploit_4), lines)
+        fns=self.reconstruction_manager.get_fns()
+        self.assertEqual(len(fns), 1)
+        self.assertIn(old_exploit_4, fns)
 
     def test_accept_clustering_single_attack_type_with_clusters(self):
         flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
@@ -266,13 +254,11 @@ class TestReconstructionManager(unittest.TestCase):
         self.reconstruction_manager.suspect_dict["attack_1-10.0.0.2-10.0.0.3"].append(
             old_exploit_4)
         self.reconstruction_manager.accept(flow_event)
-        self.assertTrue(os.path.exists("./fns.log"))
-        with open("./fns.log", "r") as fnlog:
-            lines = [str.strip() for str in fnlog.readlines()]
-            self.assertEqual(len(lines), 3)
-            self.assertIn(str(old_exploit_1), lines)
-            self.assertIn(str(old_exploit_2), lines)
-            self.assertIn(str(old_exploit_3), lines)
+        fns = self.reconstruction_manager.get_fns()
+        self.assertEqual(len(fns), 3)
+        self.assertIn(old_exploit_1, fns)
+        self.assertIn(old_exploit_2, fns)
+        self.assertIn(old_exploit_3, fns)
 
     def test_accept_clustering_single_attack_type_no_clusters(self):
         flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
@@ -300,11 +286,9 @@ class TestReconstructionManager(unittest.TestCase):
         self.reconstruction_manager.suspect_dict["attack_1-10.0.0.2-10.0.0.3"].append(
             old_exploit_4)
         self.reconstruction_manager.accept(flow_event)
-        self.assertTrue(os.path.exists("./fns.log"))
-        with open("./fns.log", "r") as fnlog:
-            lines = [str.strip() for str in fnlog.readlines()]
-            self.assertEqual(len(lines), 1)
-            self.assertIn(str(old_exploit_4), lines)
+        fns = self.reconstruction_manager.get_fns()
+        self.assertEqual(len(fns), 1)
+        self.assertIn(old_exploit_4, fns)
 
     def test_accept_clustering_multiple_attack_type(self):
         flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
@@ -378,14 +362,12 @@ class TestReconstructionManager(unittest.TestCase):
             m_old_exploit_2)
 
         self.reconstruction_manager.accept(flow_event)
-        self.assertTrue(os.path.exists("./fns.log"))
-        with open("./fns.log", "r") as fnlog:
-            lines = [str.strip() for str in fnlog.readlines()]
-            self.assertEqual(len(lines), 4)
-            self.assertIn(str(n_old_exploit_3), lines)
-            self.assertIn(str(n_old_exploit_4), lines)
-            self.assertIn(str(n_old_exploit_5), lines)
-            self.assertIn(str(n_old_exploit_6), lines)
+        fns = self.reconstruction_manager.get_fns()
+        self.assertEqual(len(fns), 4)
+        self.assertIn(n_old_exploit_3, fns)
+        self.assertIn(n_old_exploit_4, fns)
+        self.assertIn(n_old_exploit_5, fns)
+        self.assertIn(n_old_exploit_6, fns)
 
 
 if __name__ == '__main__':

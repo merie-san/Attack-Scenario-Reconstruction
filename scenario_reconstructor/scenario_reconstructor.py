@@ -43,7 +43,7 @@ class Host:
 
     def get_compromise_attributes(self) -> set[HostAttribute]:
         return self.compromise_attributes
-    
+
     def reset_attributes(self):
         self.compromise_attributes = set()
 
@@ -101,13 +101,18 @@ class FlowExploit:
     def __eq__(self, value: object) -> bool:
         if not isinstance(value, FlowExploit):
             return False
-        return self.attack_type == value.attack_type and self.source_ip == value.source_ip and self.source_port == value.source_port and self.destination_ip == value.destination_ip and self.protocol == value.protocol and self.start_time == value.start_time and self.end_time == value.end_time and self.anomaly_score == value.anomaly_score
+        return self.attack_type == value.attack_type and self.source_ip == value.source_ip and self.source_port == value.source_port and self.destination_ip == value.destination_ip and self.protocol == value.protocol and self.start_time == value.start_time and self.end_time == value.end_time
 
     def get_flow_exploit_group_id(self) -> str:
         return f"{self.attack_type.identifier}-{self.destination_ip}-{self.source_ip}"
 
     def __str__(self) -> str:
         return f"FlowExploit(attack_type={self.attack_type.identifier}, source_ip={self.source_ip}, source_port={self.source_port}, destination_ip={self.destination_ip}, destination_port={self.destination_port}, protocol={self.protocol}, start_time={self.start_time.isoformat()}, end_time={self.end_time.isoformat()}, anomaly_score={self.anomaly_score})"
+
+    def __hash__(self):
+        return hash(
+            hash(self.attack_type) + hash(self.source_ip) + hash(self.source_port) + hash(self.destination_ip) + hash(
+                self.destination_port) + hash(self.protocol) + hash(self.start_time) + hash(self.end_time))
 
 
 class Exploit:
@@ -131,8 +136,22 @@ class Exploit:
             return False
         return self.attack_type == value.attack_type and self.size == value.size and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip and self.start_time == value.start_time and self.end_time == value.end_time and self.mean_interflow_time == value.mean_interflow_time and self.std_interflow_time == value.std_interflow_time
 
+    def approx_match(self, value: object):
+        if not isinstance(value, Exploit):
+            return False
+        return self.attack_type == value.attack_type and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip and self.start_time <= value.start_time and self.end_time >= value.end_time
+
+    def approx_match_no_timing(self, value: object):
+        if not isinstance(value, Exploit):
+            return False
+        return self.attack_type == value.attack_type and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip
+
     def __str__(self) -> str:
         return f"Exploit(attack_type={self.attack_type.identifier}, size={self.size}, source_ip={self.source_ip}, destination_ip={self.destination_ip}, start_time={self.start_time.isoformat()}, end_time={self.end_time.isoformat()}, mean_ift={self.mean_interflow_time}, std_ift={self.std_interflow_time})"
+
+    def __hash__(self):
+        return hash(hash(self.attack_type) + hash(self.size) + hash(self.destination_ip) + hash(self.source_ip) + hash(
+            self.start_time) + hash(self.end_time) + hash(self.mean_interflow_time) + hash(self.std_interflow_time))
 
 
 class StringToExploitConverter:
@@ -533,15 +552,21 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
             intervals = starts[1:] - ends[:-1]
             exploits.append(Exploit(ref_flow_exploit.attack_type, len(group), ref_flow_exploit.source_ip,
                                     ref_flow_exploit.destination_ip, datetime.fromtimestamp(min(group["start_time"])),
-                                    datetime.fromtimestamp(max(group["end_time"])), intervals.mean(), intervals.std()))
+                                    datetime.fromtimestamp(max(group["start_time"])), intervals.mean(),
+                                    intervals.std()))
 
         for _, flow_exploit in noise.iterrows():
             exploits.append(Exploit(ref_flow_exploit.attack_type, 1, ref_flow_exploit.source_ip,
                                     ref_flow_exploit.destination_ip, datetime.fromtimestamp(flow_exploit["start_time"]),
-                                    datetime.fromtimestamp(flow_exploit["end_time"]), -1, -1))
+                                    datetime.fromtimestamp(flow_exploit["start_time"]), -1, -1))
         exploits.sort(key=lambda ex: ex.start_time)
         self.exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()
         ] = exploits
+
+    def update_exploits_all(self):
+        for _, flow_exploit_list in self.flow_exploits_dict.items():
+            if len(flow_exploit_list) > 0:
+                self.update_exploits(flow_exploit_list[-1])
 
     def log_states(self):
         with open(self.state_log_path, "a") as s_f:
