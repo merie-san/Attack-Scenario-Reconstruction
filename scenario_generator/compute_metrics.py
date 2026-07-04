@@ -4,7 +4,7 @@ import pandas as pd
 from scenario_reconstructor.scenario_reconstructor import Exploit, FlowExploit
 from itertools import combinations
 from sklearn.metrics import confusion_matrix
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 
 class MetricsCalculator:
@@ -123,20 +123,20 @@ class MetricsCalculator:
     @staticmethod
     def scenario_unique_order_match(predicted_steps: list[Exploit], actual_steps: list[Exploit]) -> bool:
         seen = set()
-        unique_group_ids = []
+        unique_exploit_gids = []
         for step in actual_steps:
             gid = step.get_exploit_group_id()
             if gid not in seen:
                 seen.add(gid)
-                unique_group_ids.append(gid)
+                unique_exploit_gids.append(gid)
+        if len(unique_exploit_gids) == 0:
+            return True
         i = 0
         j = 0
-        if len(unique_group_ids) == 0:
-            return True
-        while j < len(unique_group_ids):
+        while j < len(unique_exploit_gids):
             if i >= len(predicted_steps):
                 return False
-            if unique_group_ids[j] == predicted_steps[i].get_exploit_group_id():
+            if unique_exploit_gids[j] == predicted_steps[i].get_exploit_group_id():
                 j += 1
             i += 1
         return True
@@ -145,20 +145,17 @@ class MetricsCalculator:
     def scenario_full_box_match(predicted_steps: list[Exploit], actual_steps: list[Exploit]) -> bool:
         if len(actual_steps) != len(predicted_steps):
             return False
-        return all([any([predicted_step.approx_match_no_timing(actual_step) for actual_step in actual_steps]) for
-                    predicted_step in predicted_steps])
+        predicted_exploit_gids = {step.get_exploit_group_id() for step in predicted_steps}
+        actual_exploit_gids = {actual_step.get_exploit_group_id() for actual_step in actual_steps}
+        return predicted_exploit_gids == actual_exploit_gids
 
     @staticmethod
     def scenario_unique_box_match(predicted_steps: list[Exploit], actual_steps: list[Exploit]):
-        unique_group_ids = set()
-        predicted_group_ids = {step.get_exploit_group_id() for step in predicted_steps}
-        for actual_step in actual_steps:
-            unique_group_ids.add(actual_step.get_exploit_group_id())
-        for group_id in unique_group_ids:
-            if group_id not in predicted_group_ids:
-                return False
-        return True
+        predicted_exploit_gids = {step.get_exploit_group_id() for step in predicted_steps}
+        unique_exploit_gids = {actual_step.get_exploit_group_id() for actual_step in actual_steps}
+        return unique_exploit_gids.issubset(predicted_exploit_gids)
 
     @staticmethod
-    def scenario_end_match(predicted_steps: list[Exploit], actual_steps: list[Exploit]) -> bool:
-        return actual_steps[-1].get_exploit_group_id() == predicted_steps[-1].get_exploit_group_id()
+    def scenario_impact_match(predicted_steps: list[Exploit], actual_steps: list[Exploit]) -> bool:
+        predicted_exploit_gids = {step.get_exploit_group_id() for step in predicted_steps}
+        return actual_steps[-1].get_exploit_group_id() in predicted_exploit_gids
