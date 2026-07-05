@@ -61,7 +61,7 @@ class MetricsCalculator:
         return correctly_correlated, predicted_pairs, actual_pairs
 
     @staticmethod
-    def get_detection_confusion_matrix_capture(scenario_df: pd.DataFrame, alert_threshold: float):
+    def get_detection_confusion_matrix_capture(scenario_df: pd.DataFrame, alert_threshold: float)->tuple[int,int,int,int]:
         return confusion_matrix((scenario_df["label"] != "normal").astype(int),
                                 scenario_df["anomaly_score"] > alert_threshold)
 
@@ -156,6 +156,6 @@ class MetricsCalculator:
         return unique_exploit_gids.issubset(predicted_exploit_gids)
 
     @staticmethod
-    def scenario_impact_match(predicted_steps: list[Exploit], actual_steps: list[Exploit]) -> bool:
+    def scenario_end_step_match(predicted_steps: list[Exploit], actual_steps: list[Exploit]) -> bool:
         predicted_exploit_gids = {step.get_exploit_group_id() for step in predicted_steps}
         return actual_steps[-1].get_exploit_group_id() in predicted_exploit_gids

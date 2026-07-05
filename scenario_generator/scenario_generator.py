@@ -13,7 +13,7 @@ class CAPTureScenarioGenerator:
     def __init__(self, dataframe: pd.DataFrame, next_attack_dict: dict[str, list[str]], ip_list: list[str],
                  enable_src_for: dict[str, list[str]], enable_dst_for: dict[str, list[str]],
                  possible_srcs: dict[str, list[str]], possible_dsts: dict[str, list[str]],
-                 dst_restricted_atks: dict[str, list[str]], final_atk: str, enabling_atk: str) -> None:
+                 dst_restricted_atks: dict[str, list[str]], final_atk: str, enabling_atks: list[str]) -> None:
         self.data_source: dict[Hashable, dict[Hashable, pd.DataFrame]] = {}
         self.result: pd.DataFrame = pd.DataFrame()
         self.enable_src_for = enable_src_for
@@ -34,7 +34,7 @@ class CAPTureScenarioGenerator:
         self.possible_dsts = possible_dsts
         self.dst_restricted_atks = dst_restricted_atks
         self.final_atk = final_atk
-        self.enabling_atk = enabling_atk
+        self.enabling_atks = enabling_atks
 
     def generate_scenario(self, normal_flow_number_divisor: int = 1) -> pd.DataFrame:
         scenario = []
@@ -70,7 +70,7 @@ class CAPTureScenarioGenerator:
                                             dst != src_ip] if current_attack not in self.dst_restricted_atks else [
                         dst for dst in possible_dsts_list if
                         dst != src_ip and dst in self.dst_restricted_atks[current_attack]])
-                    if current_attack != self.enabling_atk or self.final_atk not in self.dst_restricted_atks or dst_ip in \
+                    if current_attack not in self.enabling_atks or self.final_atk not in self.dst_restricted_atks or dst_ip in \
                             self.dst_restricted_atks[self.final_atk] or any(
                             [rqd_dst_ip in possible_dsts[self.final_atk] for rqd_dst_ip in
                              self.dst_restricted_atks[self.final_atk]]):

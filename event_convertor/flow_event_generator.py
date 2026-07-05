@@ -8,7 +8,7 @@ class CAPTureFlowEventConvertor:
     def convert(self, df: pd.DataFrame) -> list[FlowEvent]:
         df["timestamp"] = pd.to_datetime(df["timestamp"])
         flow_events = []
-        for _, row in df.iterrows():
+        for _, row in df.itertuples():
             flow_events.append(FlowEvent(row["src_ip"], row["src_port"], row["dst_ip"], row["dst_port"],
                                          row["protocol"], row["timestamp"],
                                          row["timestamp"] + timedelta(

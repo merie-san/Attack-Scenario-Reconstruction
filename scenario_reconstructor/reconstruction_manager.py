@@ -173,6 +173,6 @@ class ScenarioReconstructionManager:
         final_alerts.sort(key=lambda x: x.start_time)
         return detected_attack_steps, final_alerts
     
-    def reset_reconstructor(self):
+    def reset(self):
         self.reconstructor.reset()
         self.suspect_dict = {}

@@ -28,7 +28,7 @@ class TestScenarioGenerator(unittest.TestCase):
                 "10.0.0."+str(i) for i in range(2, 11)], "bru": [], "dis": ["10.0.0."+str(i) for i in range(2, 11)], "ins": [], "imp": []},
             dst_restricted_atks={"imp": ["10.0.0.10"]},
             final_atk="imp",
-            enabling_atk="dis"
+            enabling_atks="dis"
         )
 
     def test_generate_scenario_coherence(self):
