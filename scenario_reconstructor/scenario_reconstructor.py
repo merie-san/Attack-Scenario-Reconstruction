@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import StandardScaler
@@ -86,9 +86,10 @@ class AttackType:
 
 class FlowExploit:
 
-    def __init__(self, attack_type: AttackType, source_ip: str, source_port: str, destination_ip: str,
+    def __init__(self, main_attack_type: AttackType, attack_types_alternatives: list[AttackType], source_ip: str, source_port: str, destination_ip: str,
                  destination_port: str, protocol: str, start_time: datetime, end_time: datetime, anomaly_score: float):
-        self.attack_type = attack_type
+        self.attack_type = main_attack_type
+        self.attack_type_alternatives = attack_types_alternatives
         self.source_ip = source_ip
         self.source_port = source_port
         self.destination_ip = destination_ip
@@ -134,7 +135,7 @@ class Exploit:
     def __eq__(self, value: object) -> bool:
         if not isinstance(value, Exploit):
             return False
-        return self.attack_type == value.attack_type and self.size == value.size and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip and self.start_time == value.start_time and self.end_time == value.end_time and self.mean_interflow_time == value.mean_interflow_time and self.std_interflow_time == value.std_interflow_time
+        return self.attack_type == value.attack_type and self.size == value.size and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip and self.start_time == value.start_time and self.end_time == value.end_time and self.mean_interflow_time - 1/1000 <= value.mean_interflow_time <= self.mean_interflow_time + 1/1000 and self.std_interflow_time - 1/1000 <= value.std_interflow_time <= self.std_interflow_time + 1/1000
 
     def approx_match(self, value: object):
         if not isinstance(value, Exploit):
@@ -174,7 +175,7 @@ class StringToExploitConverter:
         if attack_type == None:
             raise RuntimeError(
                 "Found attack type not defined in the provided list")
-        return FlowExploit(attack_type, flow_exploit_dict["source_ip"], flow_exploit_dict["source_port"],
+        return FlowExploit(attack_type, [], flow_exploit_dict["source_ip"], flow_exploit_dict["source_port"],
                            flow_exploit_dict["destination_ip"], flow_exploit_dict["destination_port"],
                            flow_exploit_dict["protocol"], datetime.fromisoformat(flow_exploit_dict["start_time"]),
                            datetime.fromisoformat(flow_exploit_dict["end_time"]),
@@ -231,7 +232,7 @@ class NetworkState:
         return cls({ip_address: host.compromise_attributes for ip_address, host in host_dict.items()}, timestamp)
 
     def __str__(self) -> str:
-        state = "-".join([f"{ip_addr}={{" + f"{'; '.join([att.value for att in att_set])}" +
+        state = "-".join([f"{ip_addr}={{" + f"{'; '.join([str(att.value) for att in att_set])}" +
                           "}" for ip_addr, att_set in self.state.items()])
         return f"NetworkState(state={{{state}}}, time={self.transition_time.isoformat()})"
 
@@ -303,9 +304,11 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
         self.state_log_path = state_log_path
         self.correlation_log_path = correlation_log_path
 
-    def reset(self):
+    def reset(self, initial_attributes: dict[Host, set[HostAttribute]]) -> None:
         for host in self.host_dict.values():
             host.reset_attributes()
+        for host in self.host_dict.values():
+            host.update_compromise_attributes(initial_attributes[host])
         self.seen_external_hosts_dict = {}
         self.flow_exploits_dict = {}
         self.exploits_dict = {}
@@ -550,15 +553,19 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
             starts = group["start_time"].to_numpy()
             ends = group["end_time"].to_numpy()
             intervals = starts[1:] - ends[:-1]
-            exploits.append(Exploit(ref_flow_exploit.attack_type, len(group), ref_flow_exploit.source_ip,
-                                    ref_flow_exploit.destination_ip, datetime.fromtimestamp(min(group["start_time"])),
-                                    datetime.fromtimestamp(max(group["start_time"])), intervals.mean(),
+            exploits.append(Exploit(ref_flow_exploit.attack_type,
+                                    len(group),
+                                    ref_flow_exploit.source_ip,
+                                    ref_flow_exploit.destination_ip,
+                                    datetime.fromtimestamp(min(group["start_time"]), timezone.utc),
+                                    datetime.fromtimestamp(max(group["start_time"]), timezone.utc),
+                                    intervals.mean(),
                                     intervals.std()))
 
         for _, flow_exploit in noise.iterrows():
             exploits.append(Exploit(ref_flow_exploit.attack_type, 1, ref_flow_exploit.source_ip,
-                                    ref_flow_exploit.destination_ip, datetime.fromtimestamp(flow_exploit["start_time"]),
-                                    datetime.fromtimestamp(flow_exploit["start_time"]), -1, -1))
+                                    ref_flow_exploit.destination_ip, datetime.fromtimestamp(flow_exploit["start_time"], timezone.utc),
+                                    datetime.fromtimestamp(flow_exploit["start_time"], timezone.utc), -1, -1))
         exploits.sort(key=lambda ex: ex.start_time)
         self.exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()
         ] = exploits

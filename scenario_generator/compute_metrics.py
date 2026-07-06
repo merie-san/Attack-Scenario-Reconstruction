@@ -48,11 +48,11 @@ class MetricsCalculator:
 
         for step in predicted_steps:
             predicted_alerts_by_step[step] = [alert for alert in alerts if
-                                              alert.get_flow_exploit_group_id() == step and step.start_time <= alert.start_time <= step.end_time]
+                                              alert.get_flow_exploit_group_id() == step.get_exploit_group_id() and step.start_time <= alert.start_time <= step.end_time]
 
         for step in actual_steps:
             actual_alerts_by_step[step] = [alert for alert in alerts if
-                                           alert.get_flow_exploit_group_id() == step and step.start_time <= alert.start_time <= step.end_time]
+                                           alert.get_flow_exploit_group_id() == step.get_exploit_group_id() and step.start_time <= alert.start_time <= step.end_time]
 
         predicted_pairs = MetricsCalculator._build_pairs(predicted_alerts_by_step)
         actual_pairs = MetricsCalculator._build_pairs(actual_alerts_by_step)
@@ -61,15 +61,16 @@ class MetricsCalculator:
         return correctly_correlated, predicted_pairs, actual_pairs
 
     @staticmethod
-    def get_detection_confusion_matrix_capture(scenario_df: pd.DataFrame, alert_threshold: float)->tuple[int,int,int,int]:
+    def get_detection_confusion_matrix_capture(scenario_df: pd.DataFrame, alert_threshold: float) -> tuple[
+        int, int, int, int]:
         return confusion_matrix((scenario_df["label"] != "normal").astype(int),
-                                scenario_df["anomaly_score"] > alert_threshold)
+                                scenario_df["anomaly_score"] > alert_threshold).ravel()
 
     @staticmethod
     def get_reconstruction_confusion_matrix_capture(
             scenario_df: pd.DataFrame,
             predicted_alerts: list[FlowExploit],
-    ):
+    ) -> tuple[int, int, int, int]:
         predicted_flows = {
             (
                 alert.start_time,
@@ -91,7 +92,7 @@ class MetricsCalculator:
             )
             values.append(int(key in predicted_flows))
 
-        return confusion_matrix((scenario_df["label"] != "normal").astype(int), values)
+        return confusion_matrix((scenario_df["label"] != "normal").astype(int), values).ravel()
 
     @staticmethod
     def scenario_exact_full_match(predicted_steps: list[Exploit], actual_steps: list[Exploit]) -> bool:

@@ -1,6 +1,6 @@
 import unittest
 from scenario_reconstructor.scenario_reconstructor import Host, StarNetworkAttackGraphBasedScenarioReconstructor, HostAttribute, AttackType, FlowExploit, Preconditions, ExploitRequirement, Exploit, NetworkState, StringToExploitConverter, StringToNetworkStateConvertor
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import numpy as np
 
@@ -492,24 +492,24 @@ class TestStarNetworkAttackGraphBasedScenarioReconstructor(unittest.TestCase):
 
     def test_update_exploits(self):
         flow_ex1 = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
-            2026, 6, 10, 10, 1), datetime(2026, 6, 10, 10, 1, 40), 0.7)
+            2026, 6, 10, 10, 1, tzinfo=timezone.utc), datetime(2026, 6, 10, 10, 1, 40, tzinfo=timezone.utc), 0.7)
         flow_ex2 = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
-            2026, 6, 10, 10, 3, 30), datetime(2026, 6, 10, 10, 3, 50), 0.7)
+            2026, 6, 10, 10, 3, 30, tzinfo=timezone.utc), datetime(2026, 6, 10, 10, 3, 50, tzinfo=timezone.utc), 0.7)
         flow_ex3 = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
-            2026, 6, 10, 10, 2, 10), datetime(2026, 6, 10, 10, 3), 0.7)
+            2026, 6, 10, 10, 2, 10, tzinfo=timezone.utc), datetime(2026, 6, 10, 10, 3, tzinfo=timezone.utc), 0.7)
         flow_ex4 = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
-            2026, 6, 10, 10, 4), datetime(2026, 6, 10, 10, 4, 55), 0.7)
+            2026, 6, 10, 10, 4, tzinfo=timezone.utc), datetime(2026, 6, 10, 10, 4, 55, tzinfo=timezone.utc), 0.7)
         flow_ex5 = FlowExploit(self.attack1, "10.0.0.5", "50000", "10.0.0.1", "40", "6", datetime(
-            2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 33), 0.7)
+            2026, 6, 10, 10, 30, tzinfo=timezone.utc), datetime(2026, 6, 10, 10, 33, tzinfo=timezone.utc), 0.7)
         self.scenario_reconstructor.flow_exploits_dict["host_discovery-10.0.0.1-10.0.0.5"] = [
             flow_ex1, flow_ex2, flow_ex3, flow_ex4, flow_ex5]
         self.scenario_reconstructor.update_exploits(flow_ex5)
         self.assertEqual(len(
             self.scenario_reconstructor.exploits_dict["host_discovery-10.0.0.1-10.0.0.5"]), 2)
         self.assertIn(Exploit(self.attack1, 1, "10.0.0.5", "10.0.0.1", datetime(
-            2026, 6, 10, 10, 30), datetime(2026, 6, 10, 10, 30), -1, -1), self.scenario_reconstructor.exploits_dict["host_discovery-10.0.0.1-10.0.0.5"])
+            2026, 6, 10, 10, 30, tzinfo=timezone.utc), datetime(2026, 6, 10, 10, 30, tzinfo=timezone.utc), -1, -1), self.scenario_reconstructor.exploits_dict["host_discovery-10.0.0.1-10.0.0.5"])
         self.assertIn(Exploit(self.attack1, 4, "10.0.0.5", "10.0.0.1", datetime(
-            2026, 6, 10, 10, 1), datetime(2026, 6, 10, 10, 4), np.array([30, 30, 10]).mean(), np.array([30, 30, 10]).std()), self.scenario_reconstructor.exploits_dict["host_discovery-10.0.0.1-10.0.0.5"])
+            2026, 6, 10, 10, 1, tzinfo=timezone.utc), datetime(2026, 6, 10, 10, 4, tzinfo=timezone.utc), np.array([30, 30, 10]).mean(), np.array([30, 30, 10]).std()), self.scenario_reconstructor.exploits_dict["host_discovery-10.0.0.1-10.0.0.5"])
 
 
 if __name__ == '__main__':

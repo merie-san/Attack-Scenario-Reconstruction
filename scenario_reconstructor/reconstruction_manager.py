@@ -1,11 +1,9 @@
 from scenario_reconstructor.scenario_reconstructor import FlowExploit, AttackType, \
-    StarNetworkAttackGraphBasedScenarioReconstructor, ExploitRequirement, Exploit
+    StarNetworkAttackGraphBasedScenarioReconstructor, Exploit, HostAttribute, Host
 from scenario_reconstructor.attack_mapper import AttackMapper
 from event_convertor.flow_event import FlowEvent
-from pathlib import Path
-from typing import List, cast
+from typing import cast, Any
 import pandas as pd
-import numpy as np
 from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import StandardScaler
 
@@ -20,8 +18,10 @@ class ExploitGenerator:
     def to_flow_exploit(self, flow_event: FlowEvent) -> FlowExploit:
         if flow_event.anomaly_score < self.anomaly_threshold:
             raise RuntimeError("The flow event cannot considered an anomaly")
-        mapped_type = self.mapper.map(flow_event)
-        return FlowExploit(mapped_type if mapped_type else self.unknown_attack, flow_event.source_ip,
+        mapped_types = self.mapper.map(flow_event)
+        return FlowExploit(mapped_types[0] if len(mapped_types) > 0 else self.unknown_attack,
+                           mapped_types[1:] if len(mapped_types) > 0 else [],
+                           flow_event.source_ip,
                            flow_event.source_port, flow_event.destination_ip, flow_event.destination_port,
                            flow_event.protocol, flow_event.start_time, flow_event.end_time, flow_event.anomaly_score)
 
@@ -74,13 +74,13 @@ class ScenarioReconstructionManager:
         self.length_when_log_states = length_when_log_states
         self.length_when_log_exploits = length_when_log_exploits
         self.suspect_list_max_length = suspect_list_max_length
-        self.fps=[]
-        self.fns=[]
+        self.fps = []
+        self.fns = []
 
     def get_fps(self) -> list[FlowExploit]:
         return self.fps
 
-    def get_fns(self)-> list[FlowExploit]:
+    def get_fns(self) -> list[FlowExploit]:
         return self.fns
 
     def accept(self, event: FlowEvent):
@@ -96,7 +96,7 @@ class ScenarioReconstructionManager:
                     if reqs:
                         if len(reqs) == 0:
                             raise RuntimeError(
-                                "The anomaly should have been directly addble to the attack graph")
+                                "The anomaly should have been directly addable to the attack graph")
                         investigation_dict = {}
                         for req in reqs:
                             for group_id, suspect_list in self.suspect_dict.items():
@@ -107,33 +107,24 @@ class ScenarioReconstructionManager:
                                     investigation_dict[group_id] = suspect_list
 
                         if len(investigation_dict) == 0:
-                            self.fps.append(anomaly)
+                            found, anomaly = self.try_alternatives_types(anomaly)
+                            if found:
+                                self._add_to_reconstructor(anomaly)
+                                self._check_and_log(anomaly)
+                            else:
+                                self.fps.append(anomaly)
 
-                        highest_score = 0
-                        fns = []
-                        chosen_attack = None
-
-                        for group_id, investigation_list in investigation_dict.items():
-                            mean_anomaly_score, flow_exploit_cluster = ScenarioReconstructionManager._find_most_recent_flow_cluster(
-                                investigation_list)
-                            if mean_anomaly_score * len(flow_exploit_cluster) > highest_score:
-                                highest_score = mean_anomaly_score * len(flow_exploit_cluster)
-                                fns = flow_exploit_cluster
-                                chosen_attack = group_id.split("-")[0]
-
-                        for group_id in investigation_dict:
-                            if group_id.split("-")[0] == chosen_attack:
-                                self.suspect_dict[group_id] = []
-
-                        self.fns.extend(fns)
-                        for fn in fns:
-                            self._add_to_reconstructor(fn)
-                            self._check_and_log(fn)
+                        self.recover_fns(investigation_dict)
                         self._add_to_reconstructor(anomaly)
                         self._check_and_log(anomaly)
 
                     else:
-                        self.fps.append(anomaly)
+                        found, anomaly = self.try_alternatives_types(anomaly)
+                        if found:
+                            self._add_to_reconstructor(anomaly)
+                            self._check_and_log(anomaly)
+                        else:
+                            self.fps.append(anomaly)
             else:
                 group_id = anomaly.get_flow_exploit_group_id()
                 if group_id in self.suspect_dict:
@@ -141,9 +132,60 @@ class ScenarioReconstructionManager:
                         anomaly)
                 else:
                     self.suspect_dict[group_id] = [anomaly]
-                if len(self.suspect_dict[anomaly.get_flow_exploit_group_id()]) > self.suspect_list_max_length  != -1:
+                if len(self.suspect_dict[anomaly.get_flow_exploit_group_id()]) > self.suspect_list_max_length != -1:
                     self.suspect_dict[anomaly.get_flow_exploit_group_id(
                     )] = self.suspect_dict[anomaly.get_flow_exploit_group_id()][self.suspect_list_max_length // 2:]
+
+    def try_alternatives_types(self, anomaly: FlowExploit) -> tuple[bool, FlowExploit]:
+        for alternative in anomaly.attack_type_alternatives:
+            anomaly.attack_type = alternative
+            reqs = self.reconstructor.compute_requirements(anomaly)
+
+            if not reqs:
+                continue
+
+            if len(reqs) == 0:
+                return True, anomaly
+
+            investigation_dict = {}
+            for req in reqs:
+
+                for group_id, suspect_list in self.suspect_dict.items():
+                    split = group_id.split("-")
+                    if split[0] == req.attack_type.identifier and split[
+                        1] == req.acceptable_destination_ip and split[
+                        2] in req.acceptable_source_ips and len(suspect_list) > 0:
+                        investigation_dict[group_id] = suspect_list
+
+                    if len(investigation_dict) == 0:
+                        continue
+
+            self.recover_fns(investigation_dict)
+            return True, anomaly
+
+        return False, anomaly
+
+    def recover_fns(self, investigation_dict: dict[Any, Any]):
+        highest_score = 0
+        fns = []
+        chosen_attack = None
+
+        for group_id, investigation_list in investigation_dict.items():
+            mean_anomaly_score, flow_exploit_cluster = ScenarioReconstructionManager._find_most_recent_flow_cluster(
+                investigation_list)
+            if mean_anomaly_score * len(flow_exploit_cluster) > highest_score:
+                highest_score = mean_anomaly_score * len(flow_exploit_cluster)
+                fns = flow_exploit_cluster
+                chosen_attack = group_id.split("-")[0]
+
+        for group_id in investigation_dict:
+            if group_id.split("-")[0] == chosen_attack:
+                self.suspect_dict[group_id] = []
+
+        self.fns.extend(fns)
+        for fn in fns:
+            self._add_to_reconstructor(fn)
+            self._check_and_log(fn)
 
     def _add_to_reconstructor(self, anomaly: FlowExploit):
         self.reconstructor.add_flow_exploit(anomaly)
@@ -153,7 +195,7 @@ class ScenarioReconstructionManager:
             self.reconstructor.add_correlation(anomaly)
 
     def _check_and_log(self, anomaly: FlowExploit):
-        if self.reconstructor.get_flow_exploit_group_length(anomaly) > self.length_when_log_exploits  != -1:
+        if self.reconstructor.get_flow_exploit_group_length(anomaly) > self.length_when_log_exploits != -1:
             self.reconstructor.update_exploits(anomaly)
             self.reconstructor.log_exploits(anomaly)
         if self.reconstructor.get_state_sequence_length() > self.length_when_log_states != -1:
@@ -165,14 +207,14 @@ class ScenarioReconstructionManager:
         flow_exploits_dict = self.reconstructor.return_flow_exploits()
         detected_attack_steps = []
         for _, exploit in exploits_dict.items():
-            detected_attack_steps.append(exploit)
+            detected_attack_steps.extend(exploit)
         final_alerts = []
         for _, flow_exploit in flow_exploits_dict.items():
-            final_alerts.append(flow_exploit)
+            final_alerts.extend(flow_exploit)
         detected_attack_steps.sort(key=lambda x: x.start_time)
         final_alerts.sort(key=lambda x: x.start_time)
         return detected_attack_steps, final_alerts
-    
-    def reset(self):
-        self.reconstructor.reset()
+
+    def reset(self, initial_attributes: dict[Host, set[HostAttribute]]):
+        self.reconstructor.reset(initial_attributes)
         self.suspect_dict = {}
