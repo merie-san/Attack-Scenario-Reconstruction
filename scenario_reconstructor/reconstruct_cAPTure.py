@@ -202,16 +202,16 @@ if __name__ == '__main__':
             scenario_completeness_list.append(metrics_calc.get_scenario_completeness(p_steps, steps))
 
         f.write(
-            f"mean true negative deviation of reconstruction results from initial intrusion detection results: {float(np.mean(delta_tn_list)):.3f}\n")
+            f"mean true negative deviation of reconstruction results from initial intrusion detection results: {float(np.mean(delta_tn_list))}\n")
         f.write(
             f"mean false positives deviation of reconstruction results from initial intrusion detection results: {float(np.mean(delta_fp_list))}\n")
         f.write(
-            f"mean false negatives deviation of reconstruction results from initial intrusion detection results: {float(np.mean(delta_fn_list)):.3f}\n")
+            f"mean false negatives deviation of reconstruction results from initial intrusion detection results: {float(np.mean(delta_fn_list))}\n")
         f.write(
-            f"mean true positives deviation of reconstruction results from initial intrusion detection results: {float(np.mean(delta_tp_list)):.3f}\n")
+            f"mean true positives deviation of reconstruction results from initial intrusion detection results: {float(np.mean(delta_tp_list))}\n")
 
-        f.write(f"mean soundness of reconstructed steps: {float(np.mean(step_soundness_list)):.3f}\n")
-        f.write(f"mean completeness of reconstructed steps: {float(np.mean(step_completeness_list)):.3f}\n")
+        f.write(f"mean soundness of reconstructed steps: {float(np.mean(step_soundness_list))}\n")
+        f.write(f"mean completeness of reconstructed steps: {float(np.mean(step_completeness_list))}\n")
         f.write(f"mean precision of reconstructed scenarios: {float(np.mean(scenario_precision_list))}\n")
         f.write(f"mean recall of reconstructed scenarios: {float(np.mean(scenario_recall_list))}\n")
         f.write(
