@@ -1,8 +1,7 @@
 from collections.abc import Hashable
 from typing import Any, cast
 
-from scenario_reconstructor.reconstruction_manager import Exploit, FlowExploit, AttackType, AttackMapper, \
-    ExploitGenerator
+from scenario_reconstructor.reconstruction_manager import Exploit, FlowExploit, AttackType
 import random
 from datetime import timedelta, datetime
 import pandas as pd
@@ -91,8 +90,6 @@ class CAPTureScenarioGenerator:
                 if current_attack in self.enable_dst_for:
                     for atk in self.enable_dst_for[current_attack]:
                         possible_dsts[atk].append(dst_ip)
-
-                print(f"attack type: {current_attack}, source ip: {src_ip}, destination ip: {dst_ip}")
                 src_dst_ips.append((src_ip, dst_ip))
 
         df_list = []
@@ -181,7 +178,7 @@ class CAPTureScenarioGenerator:
         alert_flows = self.result[self.result["label"] != "normal"]
         for row in alert_flows.itertuples():
             alerts.append(
-                FlowExploit(attack_type_dict[cast(str, row.label)],[], cast(str, row.src_ip), cast(str, row.src_port),
+                FlowExploit(attack_type_dict[cast(str, row.label)], [], cast(str, row.src_ip), cast(str, row.src_port),
                             cast(str, row.dst_ip), cast(str, row.dst_port), cast(str, row.protocol),
                             cast(datetime, row.timestamp), cast(datetime, row.timestamp) + timedelta(
                         milliseconds=cast(int, row.duration)), cast(float, row.anomaly_score)))

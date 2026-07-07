@@ -1,4 +1,4 @@
-from typing import cast
+from typing import cast, Any
 
 import pandas as pd
 from scenario_reconstructor.scenario_reconstructor import Exploit, FlowExploit
@@ -19,27 +19,29 @@ class MetricsCalculator:
         return pairs
 
     @staticmethod
-    def get_completeness(predicted_steps: list[Exploit], actual_steps: list[Exploit],
-                         predicted_alerts: list[FlowExploit], actual_alerts: list[FlowExploit]) -> float:
-        correctly_correlated, _, actual_pairs = MetricsCalculator.get_correlation_pairs(actual_alerts, actual_steps,
-                                                                                        predicted_alerts,
-                                                                                        predicted_steps)
+    def get_step_completeness(predicted_steps: list[Exploit], actual_steps: list[Exploit],
+                              predicted_alerts: list[FlowExploit], actual_alerts: list[FlowExploit]) -> float:
+        correctly_correlated, _, actual_pairs = MetricsCalculator.get_aggregation_correlation_pairs(actual_alerts,
+                                                                                                    actual_steps,
+                                                                                                    predicted_alerts,
+                                                                                                    predicted_steps)
 
         return len(correctly_correlated) / len(actual_pairs) if actual_pairs else 0.0
 
     @staticmethod
-    def get_soundness(predicted_steps: list[Exploit], actual_steps: list[Exploit],
-                      predicted_alerts: list[FlowExploit], actual_alerts: list[FlowExploit]) -> float:
-        correctly_correlated, predicted_pairs, _ = MetricsCalculator.get_correlation_pairs(actual_alerts, actual_steps,
-                                                                                           predicted_alerts,
-                                                                                           predicted_steps)
+    def get_step_soundness(predicted_steps: list[Exploit], actual_steps: list[Exploit],
+                           predicted_alerts: list[FlowExploit], actual_alerts: list[FlowExploit]) -> float:
+        correctly_correlated, predicted_pairs, _ = MetricsCalculator.get_aggregation_correlation_pairs(actual_alerts,
+                                                                                                       actual_steps,
+                                                                                                       predicted_alerts,
+                                                                                                       predicted_steps)
 
         return len(correctly_correlated) / len(predicted_pairs) if predicted_pairs else 0.0
 
     @staticmethod
-    def get_correlation_pairs(actual_alerts: list[FlowExploit], actual_steps: list[Exploit],
-                              predicted_alerts: list[FlowExploit],
-                              predicted_steps: list[Exploit]) -> tuple[
+    def get_aggregation_correlation_pairs(actual_alerts: list[FlowExploit], actual_steps: list[Exploit],
+                                          predicted_alerts: list[FlowExploit],
+                                          predicted_steps: list[Exploit]) -> tuple[
         set[tuple[FlowExploit, FlowExploit]], set[tuple[FlowExploit, FlowExploit]], set[
             tuple[FlowExploit, FlowExploit]]]:
         alerts = [alert for alert in predicted_alerts if alert in actual_alerts]
@@ -95,68 +97,108 @@ class MetricsCalculator:
         return confusion_matrix((scenario_df["label"] != "normal").astype(int), values).ravel()
 
     @staticmethod
-    def scenario_exact_full_match(predicted_steps: list[Exploit], actual_steps: list[Exploit]) -> bool:
-        if len(actual_steps) != len(predicted_steps):
-            return False
-        for i in range(len(actual_steps)):
-            if actual_steps[i] != predicted_steps[i]:
-                return False
-        return True
-
-    @staticmethod
-    def scenario_approx_full_match(predicted_steps: list[Exploit], actual_steps: list[Exploit]) -> bool:
-        if len(actual_steps) != len(predicted_steps):
-            return False
-        for i in range(len(actual_steps)):
-            if not actual_steps[i].approx_match(predicted_steps[i]):
-                return False
-        return True
-
-    @staticmethod
-    def scenario_full_order_match(predicted_steps: list[Exploit], actual_steps: list[Exploit]) -> bool:
-        if len(actual_steps) != len(predicted_steps):
-            return False
-        for i in range(len(actual_steps)):
-            if not actual_steps[i].approx_match_no_timing(predicted_steps[i]):
-                return False
-        return True
-
-    @staticmethod
-    def scenario_unique_order_match(predicted_steps: list[Exploit], actual_steps: list[Exploit]) -> bool:
-        seen = set()
-        unique_exploit_gids = []
+    def get_scenario_step_recall(predicted_steps: list[Exploit], actual_steps: list[Exploit], tolerance: int) -> float:
+        matches = 0
         for step in actual_steps:
-            gid = step.get_exploit_group_id()
-            if gid not in seen:
-                seen.add(gid)
-                unique_exploit_gids.append(gid)
-        if len(unique_exploit_gids) == 0:
-            return True
-        i = 0
-        j = 0
-        while j < len(unique_exploit_gids):
-            if i >= len(predicted_steps):
-                return False
-            if unique_exploit_gids[j] == predicted_steps[i].get_exploit_group_id():
-                j += 1
-            i += 1
-        return True
+            for p_step in predicted_steps:
+                if step.approx_match(p_step, timedelta(milliseconds=tolerance)):
+                    matches += 1
+                    break
+        return matches / len(actual_steps) if actual_steps else 0.0
 
     @staticmethod
-    def scenario_full_box_match(predicted_steps: list[Exploit], actual_steps: list[Exploit]) -> bool:
-        if len(actual_steps) != len(predicted_steps):
-            return False
-        predicted_exploit_gids = {step.get_exploit_group_id() for step in predicted_steps}
-        actual_exploit_gids = {actual_step.get_exploit_group_id() for actual_step in actual_steps}
-        return predicted_exploit_gids == actual_exploit_gids
+    def get_scenario_step_recall_no_timing(predicted_steps: list[Exploit], actual_steps: list[Exploit]) -> float:
+        matches = 0
+        for step in actual_steps:
+            for p_step in predicted_steps:
+                if step.approx_match_no_timing(p_step):
+                    matches += 1
+                    break
+        return matches / len(actual_steps) if actual_steps else 0.0
 
     @staticmethod
-    def scenario_unique_box_match(predicted_steps: list[Exploit], actual_steps: list[Exploit]):
-        predicted_exploit_gids = {step.get_exploit_group_id() for step in predicted_steps}
-        unique_exploit_gids = {actual_step.get_exploit_group_id() for actual_step in actual_steps}
-        return unique_exploit_gids.issubset(predicted_exploit_gids)
+    def get_scenario_step_precision(predicted_steps: list[Exploit], actual_steps: list[Exploit],
+                                    tolerance: int) -> float:
+        matches = 0
+        for p_step in predicted_steps:
+            for step in actual_steps:
+                if p_step.approx_match(step, timedelta(milliseconds=tolerance)):
+                    matches += 1
+                    break
+        return matches / len(predicted_steps) if predicted_steps else 0.0
 
     @staticmethod
-    def scenario_end_step_match(predicted_steps: list[Exploit], actual_steps: list[Exploit]) -> bool:
-        predicted_exploit_gids = {step.get_exploit_group_id() for step in predicted_steps}
-        return actual_steps[-1].get_exploit_group_id() in predicted_exploit_gids
+    def get_scenario_step_precision_no_timing(predicted_steps: list[Exploit], actual_steps: list[Exploit]) -> float:
+        matches = 0
+        for p_step in predicted_steps:
+            for step in actual_steps:
+                if p_step.approx_match_no_timing(step):
+                    matches += 1
+                    break
+        return matches / len(predicted_steps) if predicted_steps else 0.0
+
+    @staticmethod
+    def _match_predicted_steps(predicted_steps: list[Exploit], actual_steps: list[Exploit]):
+        matches = {}
+        for p in predicted_steps:
+            for a in actual_steps:
+                if p.approx_match_no_timing(a):
+                    matches[p] = a
+                    break
+        return matches
+
+    @staticmethod
+    def _ordered_pairs(steps: list[Exploit]) -> set[tuple[Exploit, Exploit]]:
+        return {
+            (steps[i], steps[j])
+            for i in range(len(steps))
+            for j in range(i + 1, len(steps))
+        }
+
+    @staticmethod
+    def get_scenario_completeness(
+            predicted_steps: list[Exploit],
+            actual_steps: list[Exploit],
+    ) -> float:
+
+        actual_pairs, predicted_pairs = MetricsCalculator.get_causal_correlation_pairs(actual_steps, predicted_steps)
+
+        return (
+            len(actual_pairs & predicted_pairs) / len(actual_pairs)
+            if actual_pairs
+            else 0.0
+        )
+
+    @staticmethod
+    def get_causal_correlation_pairs(actual_steps: list[Exploit], predicted_steps: list[Exploit]) -> tuple[
+        set[tuple[Exploit, Exploit]], set[Any]]:
+        actual_pairs = MetricsCalculator._ordered_pairs(actual_steps)
+
+        matches = MetricsCalculator._match_predicted_steps(
+            predicted_steps, actual_steps
+        )
+
+        predicted_pairs = set()
+
+        for i in range(len(predicted_steps)):
+            for j in range(i + 1, len(predicted_steps)):
+                p1 = predicted_steps[i]
+                p2 = predicted_steps[j]
+
+                if p1 in matches and p2 in matches:
+                    predicted_pairs.add((matches[p1], matches[p2]))
+        return actual_pairs, predicted_pairs
+
+    @staticmethod
+    def get_scenario_soundness(
+            predicted_steps: list[Exploit],
+            actual_steps: list[Exploit],
+    ) -> float:
+
+        actual_pairs, predicted_pairs = MetricsCalculator.get_causal_correlation_pairs(actual_steps, predicted_steps)
+
+        return (
+            len(actual_pairs & predicted_pairs) / len(predicted_pairs)
+            if predicted_pairs
+            else 0.0
+        )

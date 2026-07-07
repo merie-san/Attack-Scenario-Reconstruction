@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from enum import Enum
 from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import StandardScaler
@@ -86,7 +86,8 @@ class AttackType:
 
 class FlowExploit:
 
-    def __init__(self, main_attack_type: AttackType, attack_types_alternatives: list[AttackType], source_ip: str, source_port: str, destination_ip: str,
+    def __init__(self, main_attack_type: AttackType, attack_types_alternatives: list[AttackType], source_ip: str,
+                 source_port: str, destination_ip: str,
                  destination_port: str, protocol: str, start_time: datetime, end_time: datetime, anomaly_score: float):
         self.attack_type = main_attack_type
         self.attack_type_alternatives = attack_types_alternatives
@@ -135,12 +136,12 @@ class Exploit:
     def __eq__(self, value: object) -> bool:
         if not isinstance(value, Exploit):
             return False
-        return self.attack_type == value.attack_type and self.size == value.size and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip and self.start_time == value.start_time and self.end_time == value.end_time and self.mean_interflow_time - 1/1000 <= value.mean_interflow_time <= self.mean_interflow_time + 1/1000 and self.std_interflow_time - 1/1000 <= value.std_interflow_time <= self.std_interflow_time + 1/1000
+        return self.attack_type == value.attack_type and self.size == value.size and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip and self.start_time == value.start_time and self.end_time == value.end_time and self.mean_interflow_time - 0.0001 <= value.mean_interflow_time <= self.mean_interflow_time + 0.0001 and self.std_interflow_time - 0.0001 <= value.std_interflow_time <= self.std_interflow_time + 0.0001
 
-    def approx_match(self, value: object):
+    def approx_match(self, value: object, tolerance: timedelta):
         if not isinstance(value, Exploit):
             return False
-        return self.attack_type == value.attack_type and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip and self.start_time <= value.start_time and self.end_time >= value.end_time
+        return self.attack_type == value.attack_type and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip and self.start_time - tolerance <= value.start_time <= self.start_time + tolerance and self.end_time - tolerance <= value.end_time <= self.end_time + tolerance
 
     def approx_match_no_timing(self, value: object):
         if not isinstance(value, Exploit):
@@ -564,7 +565,8 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
 
         for _, flow_exploit in noise.iterrows():
             exploits.append(Exploit(ref_flow_exploit.attack_type, 1, ref_flow_exploit.source_ip,
-                                    ref_flow_exploit.destination_ip, datetime.fromtimestamp(flow_exploit["start_time"], timezone.utc),
+                                    ref_flow_exploit.destination_ip,
+                                    datetime.fromtimestamp(flow_exploit["start_time"], timezone.utc),
                                     datetime.fromtimestamp(flow_exploit["start_time"], timezone.utc), -1, -1))
         exploits.sort(key=lambda ex: ex.start_time)
         self.exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()

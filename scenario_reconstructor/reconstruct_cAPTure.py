@@ -1,7 +1,5 @@
 import argparse
 import os
-from tkinter.constants import S
-
 import pandas as pd
 import numpy as np
 from scenario_generator.scenario_generator import CAPTureScenarioGenerator
@@ -116,12 +114,14 @@ if __name__ == '__main__':
                                      description="Reconstruct scenarios and compute metrics from the cAPTure dataset, with provided macros defined in the same python file")
     parser.add_argument("-f", "--file", required=True, help="file name")
     parser.add_argument("-t", "--times", help="number of evaluation cycles", default=100, type=int)
-    parser.add_argument("-l", "--log", help="where to log", default="./log.txt", type=str)
+    parser.add_argument("-l", "--log", help="where to log results", default="./log.txt", type=str)
     parser.add_argument("--anomaly-threshold", help="threshold for alert generation", default=0.8,
                         type=float)
     parser.add_argument("--suspect-threshold", help="threshold for suspicion addition", default=0.4,
                         type=float)
     parser.add_argument("--type-threshold", help="threshold for attack type mapping", default=0.2,
+                        type=float)
+    parser.add_argument("--torelance", help="tolerance when comparing timestamps, in milliseconds", default=2000,
                         type=float)
     args = parser.parse_args()
     if args.anomaly_threshold <= 0 or args.suspect_threshold < 0:
@@ -149,59 +149,57 @@ if __name__ == '__main__':
     delta_fp_list = []
     delta_fn_list = []
     delta_tp_list = []
-    soundness_list = []
-    completeness_list = []
-    exact_matches = 0
-    approx_matches = 0
-    order_matches = 0
-    u_order_matches = 0
-    box_matches = 0
-    u_box_matches = 0
-    end_step_matches = 0
+    step_soundness_list = []
+    step_completeness_list = []
+    scenario_recall_list = []
+    scenario_precision_list = []
+    scenario_recall_nt_list = []
+    scenario_precision_nt_list = []
+    scenario_soundness_list = []
+    scenario_completeness_list = []
 
     with open(args.log, "w") as f:
 
-        f.write("starting to run the iterations...\n")
+        print("starting to run the iterations...")
 
         for i in range(args.times):
-            f.write("generating new scenario...\n")
+            print("generating new scenario...")
             scenario_df = generator.generate_scenario(10)
             steps, alerts = generator.export_results(ATK_TYPES)
-            f.write("actual exploits:\n")
-            f.write("\n".join([str(step) for step in steps]) + "\n")
-            f.write("actual alerts:\n")
-            f.write("\n".join([str(alert) for alert in alerts[-20:]]) + "\n")
-            f.write("converting scenario in flow objects...\n")
+            print("actual exploits:")
+            print("\n".join([str(step) for step in steps]) + "")
+            print("actual alerts:")
+            print("\n".join([str(alert) for alert in alerts[-20:]]) + "")
+            print("converting scenario in flow objects...")
             flows = flow_convertor.convert(scenario_df)
-            f.write("reconstructing scenario from flow objects...\n")
+            print("reconstructing scenario from flow objects...")
             for flow in flows:
                 manager.accept(flow)
             p_steps, p_alerts = manager.get_results()
-            f.write("predicted exploits:\n")
-            f.write("\n".join([str(step) for step in p_steps]) + "\n")
-            f.write("predicted alerts:\n")
-            f.write("\n".join([str(alert) for alert in p_alerts[-20:]]) + "\n")
-            f.write("predicted false negatives")
-            f.write("\n".join([str(fn) for fn in manager.get_fns()]) + "\n")
-            f.write("predicted false positives\n")
-            f.write("\n".join([str(fp) for fp in manager.get_fps()]) + "\n")
+            print("predicted exploits:")
+            print("\n".join([str(step) for step in p_steps]))
+            print("predicted alerts:")
+            print("\n".join([str(alert) for alert in p_alerts[-20:]]))
+            print("predicted false negatives")
+            print("\n".join([str(fn) for fn in manager.get_fns()]))
+            print("predicted false positives")
+            print("\n".join([str(fp) for fp in manager.get_fps()]))
             manager.reset(initial_attributes)
-            f.write("calculating metrics...\n")
+            print("calculating metrics...")
             tn, fp, fn, tp = metrics_calc.get_detection_confusion_matrix_capture(scenario_df, args.anomaly_threshold)
             tn_r, fp_r, fn_r, tp_r = metrics_calc.get_reconstruction_confusion_matrix_capture(scenario_df, p_alerts)
             delta_tn_list.append(tn_r - tn)
             delta_fp_list.append(fp_r - fp)
             delta_fn_list.append(fn_r - fn)
             delta_tp_list.append(tp_r - tp)
-            soundness_list.append(metrics_calc.get_soundness(p_steps, steps, p_alerts, alerts))
-            completeness_list.append(metrics_calc.get_completeness(p_steps, steps, p_alerts, alerts))
-            exact_matches += int(metrics_calc.scenario_exact_full_match(p_steps, steps))
-            approx_matches += int(metrics_calc.scenario_approx_full_match(p_steps, steps))
-            order_matches += int(metrics_calc.scenario_full_order_match(p_steps, steps))
-            u_order_matches += int(metrics_calc.scenario_unique_order_match(p_steps, steps))
-            box_matches += int(metrics_calc.scenario_full_box_match(p_steps, steps))
-            u_box_matches += int(metrics_calc.scenario_unique_box_match(p_steps, steps))
-            end_step_matches += int(metrics_calc.scenario_end_step_match(p_steps, steps))
+            step_soundness_list.append(metrics_calc.get_step_soundness(p_steps, steps, p_alerts, alerts))
+            step_completeness_list.append(metrics_calc.get_step_completeness(p_steps, steps, p_alerts, alerts))
+            scenario_recall_list.append(metrics_calc.get_scenario_step_recall(p_steps, steps, args.torelance))
+            scenario_precision_list.append(metrics_calc.get_scenario_step_precision(p_steps, steps, args.torelance))
+            scenario_recall_nt_list.append(metrics_calc.get_scenario_step_recall_no_timing(p_steps, steps))
+            scenario_precision_nt_list.append(metrics_calc.get_scenario_step_precision_no_timing(p_steps, steps))
+            scenario_soundness_list.append(metrics_calc.get_scenario_soundness(p_steps, steps))
+            scenario_completeness_list.append(metrics_calc.get_scenario_completeness(p_steps, steps))
 
         f.write(
             f"mean true negative deviation of reconstruction results from initial intrusion detection results: {float(np.mean(delta_tn_list)):.3f}\n")
@@ -212,12 +210,12 @@ if __name__ == '__main__':
         f.write(
             f"mean true positives deviation of reconstruction results from initial intrusion detection results: {float(np.mean(delta_tp_list)):.3f}\n")
 
-        f.write(f"mean soundness of reconstructed steps: {float(np.mean(soundness_list)):.3f}\n")
-        f.write(f"mean completeness of reconstructed steps: {float(np.mean(completeness_list)):.3f}\n")
-        f.write(f"percentage of exact matches: {exact_matches * 100 / args.times:.3f}\n")
-        f.write(f"percentage of approximate matches: {approx_matches * 100 / args.times:.3f}\n")
-        f.write(f"percentage of order matches: {order_matches * 100 / args.times:.3f}\n")
-        f.write(f"percentage of order matches without repetition: {u_box_matches * 100 / args.times:.3f}\n")
-        f.write(f"percentage of box matches: {box_matches * 100 / args.times:.3f}\n")
-        f.write(f"percentage of box matches without repetition: {u_box_matches * 100 / args.times:.3f}\n")
-        f.write(f"percentage of end-step matches: {end_step_matches * 100 / args.times:.3f}\n")
+        f.write(f"mean soundness of reconstructed steps: {float(np.mean(step_soundness_list)):.3f}\n")
+        f.write(f"mean completeness of reconstructed steps: {float(np.mean(step_completeness_list)):.3f}\n")
+        f.write(f"mean precision of reconstructed scenarios: {float(np.mean(scenario_precision_list))}\n")
+        f.write(f"mean recall of reconstructed scenarios: {float(np.mean(scenario_recall_list))}\n")
+        f.write(
+            f"mean precision of reconstructed scenarios (no timing): {float(np.mean(scenario_precision_nt_list))}\n")
+        f.write(f"mean recall of reconstructed scenarios (no timing): {float(np.mean(scenario_recall_nt_list))}\n")
+        f.write(f"mean soundness of reconstructed scenarios: {float(np.mean(scenario_soundness_list))}\n")
+        f.write(f"mean completeness of reconstructed scenarios: {float(np.mean(scenario_completeness_list))}\n")
