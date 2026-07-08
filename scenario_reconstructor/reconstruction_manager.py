@@ -159,7 +159,7 @@ class ScenarioReconstructionManager:
                         investigation_dict[group_id] = suspect_list
                     
             if len(investigation_dict.keys()) == 0:
-                return False, anomaly
+                continue
             
             self._recover_fns(investigation_dict)
             return True, anomaly
