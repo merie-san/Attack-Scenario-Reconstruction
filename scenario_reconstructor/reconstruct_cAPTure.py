@@ -194,10 +194,14 @@ if __name__ == '__main__':
             scenario_df, args.anomaly_threshold)
         tn_r, fp_r, fn_r, tp_r = metrics_calc.get_reconstruction_confusion_matrix_capture(
             scenario_df, p_alerts)
-        delta_tn_over_tn_list.append((tn_r - tn)/tn)
-        delta_fp_over_fp_list.append((fp_r - fp)/fp)
-        delta_fn_over_fn_list.append((fn_r - fn)/fn)
-        delta_tp_over_tp_list.append((tp_r - tp)/tp)
+        if tn > 0:
+            delta_tn_over_tn_list.append((tn_r - tn) / tn)
+        if fp > 0:
+            delta_fp_over_fp_list.append((fp_r - fp) / fp)
+        if fn > 0:
+            delta_fn_over_fn_list.append((fn_r - fn) / fn)
+        if tp > 0:
+            delta_tp_over_tp_list.append((tp_r - tp) / tp)
         step_soundness, step_completeness = metrics_calc.get_step_soundness_completeness(
             p_steps, steps, p_alerts, alerts, UNDETERMINED)
         step_soundness_list.append(step_soundness)
