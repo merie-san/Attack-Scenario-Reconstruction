@@ -107,7 +107,7 @@ class ScenarioReconstructionManager:
                                     investigation_dict[group_id] = suspect_list
 
                         if len(investigation_dict) == 0:
-                            found, anomaly = self.try_alternatives_types(
+                            found, anomaly = self._try_alternative_types(
                                 anomaly)
                             if found:
                                 self._add_to_reconstructor(anomaly)
@@ -115,12 +115,12 @@ class ScenarioReconstructionManager:
                             else:
                                 self.fps.append(anomaly)
                         else:
-                            self.recover_fns(investigation_dict)
+                            self._recover_fns(investigation_dict)
                             self._add_to_reconstructor(anomaly)
                             self._check_and_log(anomaly)
 
                     else:
-                        found, anomaly = self.try_alternatives_types(anomaly)
+                        found, anomaly = self._try_alternative_types(anomaly)
                         if found:
                             self._add_to_reconstructor(anomaly)
                             self._check_and_log(anomaly)
@@ -137,7 +137,7 @@ class ScenarioReconstructionManager:
                     self.suspect_dict[anomaly.get_flow_exploit_group_id(
                     )] = self.suspect_dict[anomaly.get_flow_exploit_group_id()][self.suspect_list_max_length // 2:]
 
-    def try_alternatives_types(self, anomaly: FlowExploit) -> tuple[bool, FlowExploit]:
+    def _try_alternative_types(self, anomaly: FlowExploit) -> tuple[bool, FlowExploit]:
         for alternative in anomaly.attack_type_alternatives:
             anomaly.attack_type = alternative
             reqs = self.reconstructor.compute_requirements(anomaly)
@@ -157,19 +157,16 @@ class ScenarioReconstructionManager:
                             1] == req.acceptable_destination_ip and split[
                             2] in req.acceptable_source_ips and len(suspect_list) > 0:
                         investigation_dict[group_id] = suspect_list
-
-                    if len(investigation_dict) == 0:
-                        continue
                     
             if len(investigation_dict.keys()) == 0:
                 return False, anomaly
             
-            self.recover_fns(investigation_dict)
+            self._recover_fns(investigation_dict)
             return True, anomaly
 
         return False, anomaly
 
-    def recover_fns(self, investigation_dict: dict[Any, Any]):
+    def _recover_fns(self, investigation_dict: dict[Any, Any]):
         highest_score = 0
         fns = []
         chosen_attack = None
