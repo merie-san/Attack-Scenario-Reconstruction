@@ -151,10 +151,10 @@ if __name__ == '__main__':
     manager = ScenarioReconstructionManager(reconstructor, mapper, args.suspect_threshold, args.anomaly_threshold,
                                             UNDETERMINED)
 
-    delta_tn_list = []
-    delta_fp_list = []
-    delta_fn_list = []
-    delta_tp_list = []
+    delta_tn_over_tn_list = []
+    delta_fp_over_fp_list = []
+    delta_fn_over_fn_list = []
+    delta_tp_over_tp_list = []
     step_soundness_list = []
     step_completeness_list = []
     scenario_recall_list = []
@@ -194,10 +194,10 @@ if __name__ == '__main__':
             scenario_df, args.anomaly_threshold)
         tn_r, fp_r, fn_r, tp_r = metrics_calc.get_reconstruction_confusion_matrix_capture(
             scenario_df, p_alerts)
-        delta_tn_list.append(tn_r - tn)
-        delta_fp_list.append(fp_r - fp)
-        delta_fn_list.append(fn_r - fn)
-        delta_tp_list.append(tp_r - tp)
+        delta_tn_over_tn_list.append((tn_r - tn)/tn)
+        delta_fp_over_fp_list.append((fp_r - fp)/fp)
+        delta_fn_over_fn_list.append((fn_r - fn)/fn)
+        delta_tp_over_tp_list.append((tp_r - tp)/tp)
         step_soundness, step_completeness = metrics_calc.get_step_soundness_completeness(
             p_steps, steps, p_alerts, alerts, UNDETERMINED)
         step_soundness_list.append(step_soundness)
@@ -218,13 +218,13 @@ if __name__ == '__main__':
     with open(args.log, "w") as f:
 
         f.write(
-            f"mean true negative deviation of reconstruction results from initial intrusion detection results: {float(np.mean(delta_tn_list))}\n")
+            f"mean proportion of true negative deviation of reconstruction results from intrusion detection results: {float(np.mean(delta_tn_over_tn_list))}\n")
         f.write(
-            f"mean false positives deviation of reconstruction results from initial intrusion detection results: {float(np.mean(delta_fp_list))}\n")
+            f"mean proportion of false positives deviation of reconstruction results from intrusion detection results: {float(np.mean(delta_fp_over_fp_list))}\n")
         f.write(
-            f"mean false negatives deviation of reconstruction results from initial intrusion detection results: {float(np.mean(delta_fn_list))}\n")
+            f"mean proportion of false negatives deviation of reconstruction results from intrusion detection results: {float(np.mean(delta_fn_over_fn_list))}\n")
         f.write(
-            f"mean true positives deviation of reconstruction results from initial intrusion detection results: {float(np.mean(delta_tp_list))}\n")
+            f"mean proportion of true positives deviation of reconstruction results from intrusion detection results: {float(np.mean(delta_tp_over_tp_list))}\n")
 
         f.write(
             f"mean soundness of reconstructed steps: {float(np.mean(step_soundness_list))}\n")
