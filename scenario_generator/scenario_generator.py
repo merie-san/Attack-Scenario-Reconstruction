@@ -11,7 +11,7 @@ import copy
 
 class CAPTureScenarioGenerator:
 
-    def __init__(self, dataframe: pd.DataFrame, next_attack_dict: dict[str, list[str]], ip_list: list[str],
+    def __init__(self, dataframe: pd.DataFrame, next_attack_dict: dict[str, list[str]],
                  enable_src_for: dict[str, list[str]], enable_dst_for: dict[str, list[str]],
                  possible_srcs: dict[str, list[str]], possible_dsts: dict[str, list[str]],
                  dst_restricted_atks: dict[str, list[str]], final_atk: str, enabling_atks: list[str]) -> None:
@@ -20,7 +20,6 @@ class CAPTureScenarioGenerator:
         self.enable_src_for = enable_src_for
         self.enable_dst_for = enable_dst_for
         self.next_attack_dict = next_attack_dict
-        self.ip_list = ip_list
         self.attack_names: list[str] = []
         self.attack_times: list[tuple[datetime, datetime]] = []
         self.attack_ips: list[tuple[str, str]] = []

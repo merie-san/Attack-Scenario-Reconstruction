@@ -99,9 +99,9 @@ SCP_INST = AttackType(SCP_INST_NAME, {Preconditions({DollarCharHostAttributes.ST
                       {DollarCharHostAttributes.SCRIPTS_INSTALLED})
 UNDETERMINED = AttackType("undetermined", {Preconditions(
     {DollarCharHostAttributes.START_MACHINE, DollarCharHostAttributes.SSH_COMPROMISED}, True)},
-    {DollarCharHostAttributes.SSH_DISCOVERED, DollarCharHostAttributes.MQTT_DISCOVERED,
-     DollarCharHostAttributes.SSH_COMPROMISED, DollarCharHostAttributes.CRASHED,
-     DollarCharHostAttributes.SCRIPTS_INSTALLED})
+                          {DollarCharHostAttributes.SSH_DISCOVERED, DollarCharHostAttributes.MQTT_DISCOVERED,
+                           DollarCharHostAttributes.SSH_COMPROMISED, DollarCharHostAttributes.CRASHED,
+                           DollarCharHostAttributes.SCRIPTS_INSTALLED})
 ATK_TYPES = [NMAP_MQTT, NMAP_10_T5, NMAP_BANNER,
              BRUTE_FORCE_MALFORMED, DOLLAR_CHAR, SCP_INST]
 
@@ -139,7 +139,7 @@ if __name__ == '__main__':
         raise argparse.ArgumentTypeError("File does not exist")
     reconstruction_df = pd.read_csv(args.file)
     reconstruction_df = reconstruction_df.sort_values(by="timestamp")
-    generator = CAPTureScenarioGenerator(reconstruction_df, NEXT_ATTACK_DICT, IP_LIST, ENABLE_SRC_FOR, ENABLE_DST_FOR,
+    generator = CAPTureScenarioGenerator(reconstruction_df, NEXT_ATTACK_DICT, ENABLE_SRC_FOR, ENABLE_DST_FOR,
                                          POSSIBLE_SRCS, POSSIBLE_DSTS, DST_RESTRICTED_ATKS, FINAL_ATK, ENABLE_ATKS)
     flow_convertor = CAPTureFlowEventConvertor()
     metrics_calc = MetricsCalculator()

@@ -19,7 +19,6 @@ class TestScenarioGenerator(unittest.TestCase):
             dataframe=self.source_df,
             next_attack_dict={"start": ["rec"], "rec": ["rec", "bru"], "bru": [
                 "dis"], "dis": ["dis", "ins"], "ins": ["imp"], "imp": ["end"]},
-            ip_list=["10.0.0." + str(i) for i in range(11)],
             enable_src_for={"bru": ["dis"], "ins": ["imp"]},
             enable_dst_for={"rec": ["bru"], "bru": ["ins"], "dis": ["imp"]},
             possible_srcs={"rec": ["10.0.0.1"], "bru": [
