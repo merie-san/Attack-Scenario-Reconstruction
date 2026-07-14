@@ -225,6 +225,7 @@ class TestCalculator(unittest.TestCase):
         self.assertEqual(self.calculator.get_scenario_step_recall_no_timing(self.predicted_steps,self.actual_steps, UNDETERMINED), 1)
 
     def test_get_scenario_soundness_completeness(self):
+        self.actual_steps.append(Exploit(ATTACK_3, 2, "10.0.0.6", "10.0.0.10",  datetime(2001, 10, 10, 0, 1, 3), datetime(2001, 10, 10, 0, 1, 38), (datetime(2001, 10, 10, 0, 1, 38) - datetime(2001, 10, 10, 0, 1, 2)).total_seconds(), 0))
         sound, compl=self.calculator.get_scenario_soundness_completeness(self.predicted_steps, self.actual_steps, UNDETERMINED)
         self.assertEqual(sound,1)
         self.assertEqual(compl,1)
