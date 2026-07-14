@@ -10,13 +10,13 @@ from sklearn.preprocessing import StandardScaler
 
 class ExploitGenerator:
 
-    def __init__(self, mapper: AttackMapper, anomaly_threshold: float, unknown_attack: AttackType) -> None:
+    def __init__(self, mapper: AttackMapper, suspect_threshold: float, unknown_attack: AttackType) -> None:
         self.mapper = mapper
-        self.anomaly_threshold = anomaly_threshold
+        self.suspect_threshold = suspect_threshold
         self.unknown_attack = unknown_attack
 
     def to_flow_exploit(self, flow_event: FlowEvent) -> FlowExploit:
-        if flow_event.anomaly_score < self.anomaly_threshold:
+        if flow_event.anomaly_score < self.suspect_threshold:
             raise RuntimeError("The flow event cannot considered an anomaly")
         mapped_types = self.mapper.map(flow_event)
         return FlowExploit(mapped_types[-1] if len(mapped_types) > 0 else self.unknown_attack,
@@ -62,13 +62,13 @@ class ScenarioReconstructionManager:
         return mean_anomaly_score, most_recent_flows
 
     def __init__(self, reconstructor: StarNetworkAttackGraphBasedScenarioReconstructor, mapper: AttackMapper,
-                 anomaly_threshold: float, exploit_threshold: float, unknown_attack: AttackType,
+                 suspect_threshold: float, anomaly_threshold: float, unknown_attack: AttackType,
                  length_when_log_states: int = -1,
                  length_when_log_exploits: int = -1, suspect_list_max_length: int = -1) -> None:
         self.generator = ExploitGenerator(
-            mapper, anomaly_threshold, unknown_attack)
-        self.ex_threshold = exploit_threshold
-        self.an_threshold = anomaly_threshold
+            mapper, suspect_threshold, unknown_attack)
+        self.anomaly_threshold = anomaly_threshold
+        self.suspect_threshold = suspect_threshold
         self.reconstructor = reconstructor
         self.suspect_dict: dict[str, list[FlowExploit]] = {}
         self.length_when_log_states = length_when_log_states
@@ -84,9 +84,9 @@ class ScenarioReconstructionManager:
         return self.fns
 
     def accept(self, event: FlowEvent):
-        if event.anomaly_score > self.an_threshold:
+        if event.anomaly_score > self.suspect_threshold:
             anomaly = self.generator.to_flow_exploit(event)
-            if anomaly.anomaly_score > self.ex_threshold:
+            if anomaly.anomaly_score > self.anomaly_threshold:
 
                 if self.reconstructor.check_preconditions(anomaly):
                     self._add_to_reconstructor(anomaly)

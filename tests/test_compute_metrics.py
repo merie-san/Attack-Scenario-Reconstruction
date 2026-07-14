@@ -204,7 +204,7 @@ class TestCalculator(unittest.TestCase):
         self.assertEqual(compl, 0.5)
 
     def test_get_confusion_matrixes_detection(self):
-        tn, fp, fn, tp = self.calculator.get_detection_confusion_matrix_capture(
+        tn, fp, fn, tp = self.calculator.get_detection_confusion_matrix(
             self.scenario_df,0.8)
         self.assertEqual(tn,4)
         self.assertEqual(fp,2)
@@ -212,7 +212,7 @@ class TestCalculator(unittest.TestCase):
         self.assertEqual(tp,3)
 
     def test_get_confusion_matrixes_reconstruction(self):
-        tn, fp, fn, tp = self.calculator.get_reconstruction_confusion_matrix_capture(self.scenario_df, self.predicted_alerts)
+        tn, fp, fn, tp = self.calculator.get_reconstruction_confusion_matrix(self.scenario_df, self.predicted_alerts)
         self.assertEqual(tn,5)
         self.assertEqual(fp,1)
         self.assertEqual(fn,1)

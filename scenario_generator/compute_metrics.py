@@ -98,7 +98,7 @@ class MetricsCalculator:
         return actual_pairs & predicted_pairs, predicted_pairs, actual_pairs
 
     @staticmethod
-    def get_detection_confusion_matrix_capture(scenario_df: pd.DataFrame, alert_threshold: float) -> tuple[
+    def get_detection_confusion_matrix(scenario_df: pd.DataFrame, alert_threshold: float) -> tuple[
             int, int, int, int]:
         y_true = (scenario_df["label"] != "normal").astype(int)
         y_pred = scenario_df["anomaly_score"] >= alert_threshold
@@ -106,7 +106,7 @@ class MetricsCalculator:
         return int(tn), int(fp), int(fn), int(tp)
 
     @staticmethod
-    def get_reconstruction_confusion_matrix_capture(
+    def get_reconstruction_confusion_matrix(
             scenario_df: pd.DataFrame,
             predicted_alerts: list[FlowExploit],
     ) -> tuple[int, int, int, int]:

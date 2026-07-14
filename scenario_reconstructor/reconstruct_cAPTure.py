@@ -40,9 +40,9 @@ IP_LIST = ["10.0.0." + str(n) for n in range(1, 24)]
 
 IP_LIST.remove("10.0.0.3")
 
-SUBNET_IPS = ["10.0.0." + str(n) for n in range(1, 24) if n != 2]
+SUBNET_IPS = ["10.0.0." + str(n) for n in range(1, 24) if n != 2 and n!=3]
 
-MQTT_NODE_IPS = ["10.0.0." + str(n) for n in range(3, 24)]
+MQTT_NODE_IPS = ["10.0.0." + str(n) for n in range(4, 24)]
 
 POSSIBLE_SRCS = {NMAP_10_T5_NAME: ["10.0.0.2"],
                  NMAP_MQTT_NAME: [],
@@ -190,9 +190,9 @@ if __name__ == '__main__':
         print("\n".join([str(fp) for fp in manager.get_fps()]))
         manager.reset(initial_attributes)
         print("calculating metrics...")
-        tn, fp, fn, tp = metrics_calc.get_detection_confusion_matrix_capture(
+        tn, fp, fn, tp = metrics_calc.get_detection_confusion_matrix(
             scenario_df, args.anomaly_threshold)
-        tn_r, fp_r, fn_r, tp_r = metrics_calc.get_reconstruction_confusion_matrix_capture(
+        tn_r, fp_r, fn_r, tp_r = metrics_calc.get_reconstruction_confusion_matrix(
             scenario_df, p_alerts)
         if tn > 0:
             delta_tn_over_tn_list.append((tn_r - tn) / tn)
