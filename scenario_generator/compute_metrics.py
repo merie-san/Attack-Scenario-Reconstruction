@@ -31,22 +31,25 @@ class MetricsCalculator:
 
     @staticmethod
     def get_step_soundness_completeness(predicted_steps: list[Exploit], actual_steps: list[Exploit],
-                                        predicted_alerts: list[FlowExploit], actual_alerts: list[FlowExploit], unknown_attack_type: AttackType | None = None) -> tuple[float, float]:
-        correctly_correlated, predicted_pairs, actual_pairs = MetricsCalculator._get_aggregation_correlation_pairs(actual_alerts,
-                                                                                                                  actual_steps,
-                                                                                                                  predicted_alerts,
-                                                                                                                  predicted_steps, unknown_attack_type)
+                                        predicted_alerts: list[FlowExploit], actual_alerts: list[FlowExploit],
+                                        unknown_attack_type: AttackType | None = None) -> tuple[float, float]:
+        correctly_correlated, predicted_pairs, actual_pairs = MetricsCalculator._get_aggregation_correlation_pairs(
+            actual_alerts,
+            actual_steps,
+            predicted_alerts,
+            predicted_steps, unknown_attack_type)
 
         completeness = len(correctly_correlated) / \
-            len(actual_pairs) if actual_pairs else 0.0
+                       len(actual_pairs) if actual_pairs else 0.0
         soundness = len(correctly_correlated) / \
-            len(predicted_pairs) if predicted_pairs else 0.0
+                    len(predicted_pairs) if predicted_pairs else 0.0
         return soundness, completeness
 
     @staticmethod
     def _get_aggregation_correlation_pairs(actual_alerts: list[FlowExploit], actual_steps: list[Exploit],
-                                          predicted_alerts: list[FlowExploit],
-                                          predicted_steps: list[Exploit], unknown_attack_type: AttackType | None = None) -> tuple[
+                                           predicted_alerts: list[FlowExploit],
+                                           predicted_steps: list[Exploit],
+                                           unknown_attack_type: AttackType | None = None) -> tuple[
         set[tuple[FlowExploit, FlowExploit]], set[tuple[FlowExploit, FlowExploit]], set[
             tuple[FlowExploit, FlowExploit]]]:
         actual_by_key = defaultdict(list)
@@ -99,7 +102,7 @@ class MetricsCalculator:
 
     @staticmethod
     def get_detection_confusion_matrix(scenario_df: pd.DataFrame, alert_threshold: float) -> tuple[
-            int, int, int, int]:
+        int, int, int, int]:
         y_true = (scenario_df["label"] != "normal").astype(int)
         y_pred = scenario_df["anomaly_score"] >= alert_threshold
         tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
@@ -146,7 +149,8 @@ class MetricsCalculator:
         return int(tn), int(fp), int(fn), int(tp)
 
     @staticmethod
-    def get_scenario_step_recall(predicted_steps: list[Exploit], actual_steps: list[Exploit], tolerance: int, unknown_attack_type: AttackType | None = None) -> float:
+    def get_scenario_step_recall(predicted_steps: list[Exploit], actual_steps: list[Exploit], tolerance: int,
+                                 unknown_attack_type: AttackType | None = None) -> float:
         matches = 0
         for step in actual_steps:
             for p_step in predicted_steps:
@@ -156,7 +160,8 @@ class MetricsCalculator:
         return matches / len(actual_steps) if actual_steps else 0.0
 
     @staticmethod
-    def get_scenario_step_recall_no_timing(predicted_steps: list[Exploit], actual_steps: list[Exploit], unknown_attack_type: AttackType | None = None) -> float:
+    def get_scenario_step_recall_no_timing(predicted_steps: list[Exploit], actual_steps: list[Exploit],
+                                           unknown_attack_type: AttackType | None = None) -> float:
         matches = 0
         for step in actual_steps:
             for p_step in predicted_steps:
@@ -177,7 +182,8 @@ class MetricsCalculator:
         return matches / len(predicted_steps) if predicted_steps else 0.0
 
     @staticmethod
-    def get_scenario_step_precision_no_timing(predicted_steps: list[Exploit], actual_steps: list[Exploit], unknown_attack_type: AttackType | None = None) -> float:
+    def get_scenario_step_precision_no_timing(predicted_steps: list[Exploit], actual_steps: list[Exploit],
+                                              unknown_attack_type: AttackType | None = None) -> float:
         matches = 0
         for p_step in predicted_steps:
             for step in actual_steps:
@@ -187,7 +193,8 @@ class MetricsCalculator:
         return matches / len(predicted_steps) if predicted_steps else 0.0
 
     @staticmethod
-    def _get_step_matches(predicted_steps: list[Exploit], actual_steps: list[Exploit], unknown_attack_type: AttackType | None = None):
+    def _get_step_matches(predicted_steps: list[Exploit], actual_steps: list[Exploit],
+                          unknown_attack_type: AttackType | None = None) -> dict[Exploit, Exploit]:
         matches = {}
         actual_index = MetricsCalculator._index_steps(actual_steps)
         for p in predicted_steps:
@@ -199,32 +206,25 @@ class MetricsCalculator:
         return matches
 
     @staticmethod
-    def _ordered_pairs(steps: list[Exploit]) -> set[tuple[Exploit, Exploit]]:
-        steps = sorted(steps, key=lambda x: x.start_time)
-        return {
-            (steps[i], steps[j])
-            for i in range(len(steps))
-            for j in range(i + 1, len(steps))
-        }
-
-    @staticmethod
-    def _get_causal_correlation_pairs(actual_steps: list[Exploit], predicted_steps: list[Exploit], unknown_attack_type: AttackType | None = None) -> tuple[
-            set[tuple[Exploit, Exploit]], set[tuple[Exploit, Exploit]], set[tuple[Exploit, Exploit]]]:
-        actual_pairs = MetricsCalculator._ordered_pairs(actual_steps)
+    def _get_causal_correlation_pairs(actual_steps: list[Exploit], predicted_steps: list[Exploit],
+                                      unknown_attack_type: AttackType | None = None) -> tuple[
+        set[tuple[Exploit, Exploit]], set[tuple[Exploit, Exploit]], set[tuple[Exploit, Exploit]]]:
 
         matches = MetricsCalculator._get_step_matches(
             predicted_steps, actual_steps, unknown_attack_type
         )
 
-        predicted_pairs = set()
+        actual_steps = sorted(actual_steps, key=lambda x: x.start_time)
+        predicted_steps = sorted(predicted_steps, key=lambda x: x.start_time)
 
-        for i in range(len(predicted_steps)):
-            for j in range(i + 1, len(predicted_steps)):
-                p1 = predicted_steps[i]
-                p2 = predicted_steps[j]
+        actual_pairs = {(actual_steps[i], actual_steps[j]) for i in range(len(actual_steps)) for j in
+                        range(i + 1, len(actual_steps)) if
+                        actual_steps[i] in matches.values() and actual_steps[j] in matches.values()}
 
-                if p1 in matches and p2 in matches and matches[p1]!=matches[p2]:
-                    predicted_pairs.add((matches[p1], matches[p2]))
+        predicted_pairs = {(matches[predicted_steps[i]], matches[predicted_steps[j]]) for i in
+                           range(len(predicted_steps)) for j in range(i + 1, len(predicted_steps)) if
+                           predicted_steps[i] in matches.keys() and predicted_steps[j] in matches.keys() and matches[
+                               predicted_steps[i]] != matches[predicted_steps[j]]}
 
         return actual_pairs, predicted_pairs, predicted_pairs & actual_pairs
 
@@ -244,5 +244,5 @@ class MetricsCalculator:
             else 0.0
         )
         completeness = len(correct_pairs) / \
-            len(actual_pairs) if actual_pairs else 0.0
+                       len(actual_pairs) if actual_pairs else 0.0
         return soundness, completeness
