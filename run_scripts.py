@@ -1,16 +1,8 @@
 root='./data/final datasets/'
-dataset_files=['hbos_gnb_rec_dataset.csv',
-               'hbos_xgb_rec_dataset.csv',
-               'iforest_gnb_rec_dataset.csv',
+dataset_files=['iforest_gnb_rec_dataset.csv',
                'iforest_xgb_rec_dataset.csv',
                'logistic_regression_gnb_rec_dataset.csv',
                'logistic_regression_xgb_rec_dataset.csv',
-               'naive_bayes_gnb_rec_dataset.csv',
-               'naive_bayes_xgb_rec_dataset.csv',
-               'qda_gnb_rec_dataset.csv',
-               'qda_xgb_rec_dataset.csv',
-               'sampling_gnb_rec_dataset.csv',
-               'sampling_xgb_rec_dataset.csv',
                'xgb_gnb_rec_dataset.csv',
                'xgb_xgb_rec_dataset.csv']
 out_root='./data/result logs/'
