@@ -40,7 +40,7 @@ IP_LIST = ["10.0.0." + str(n) for n in range(1, 24)]
 
 IP_LIST.remove("10.0.0.3")
 
-SUBNET_IPS = ["10.0.0." + str(n) for n in range(1, 24) if n != 2 and n!=3]
+SUBNET_IPS = ["10.0.0." + str(n) for n in range(1, 24) if n != 2 and n != 3]
 
 MQTT_NODE_IPS = ["10.0.0." + str(n) for n in range(4, 24)]
 
@@ -151,10 +151,14 @@ if __name__ == '__main__':
     manager = ScenarioReconstructionManager(reconstructor, mapper, args.suspect_threshold, args.anomaly_threshold,
                                             UNDETERMINED)
 
-    delta_tn_over_tn_list = []
-    delta_fp_over_fp_list = []
-    delta_fn_over_fn_list = []
-    delta_tp_over_tp_list = []
+    tn_list = []
+    fp_list = []
+    fn_list = []
+    tp_list = []
+    tnr_list = []
+    fpr_list = []
+    fnr_list = []
+    tpr_list = []
     step_soundness_list = []
     step_completeness_list = []
     scenario_recall_list = []
@@ -163,7 +167,8 @@ if __name__ == '__main__':
     scenario_precision_nt_list = []
     scenario_soundness_list = []
     scenario_completeness_list = []
-
+    false_negative_scenarios_actual = []
+    false_negative_scenarios_predicted = []
     print("starting to run the iterations...")
 
     for i in range(args.times):
@@ -188,20 +193,19 @@ if __name__ == '__main__':
         print("\n".join([str(fn) for fn in manager.get_fns()]))
         print("predicted false positives")
         print("\n".join([str(fp) for fp in manager.get_fps()]))
-        manager.reset(initial_attributes)
         print("calculating metrics...")
         tn, fp, fn, tp = metrics_calc.get_detection_confusion_matrix(
             scenario_df, args.anomaly_threshold)
         tn_r, fp_r, fn_r, tp_r = metrics_calc.get_reconstruction_confusion_matrix(
             scenario_df, p_alerts)
-        if tn > 0:
-            delta_tn_over_tn_list.append((tn_r - tn) / tn)
-        if fp > 0:
-            delta_fp_over_fp_list.append((fp_r - fp) / fp)
-        if fn > 0:
-            delta_fn_over_fn_list.append((fn_r - fn) / fn)
-        if tp > 0:
-            delta_tp_over_tp_list.append((tp_r - tp) / tp)
+        tn_list.append(tn)
+        fp_list.append(fp)
+        fn_list.append(fn)
+        tp_list.append(tp)
+        tnr_list.append(tn_r)
+        fpr_list.append(fp_r)
+        fnr_list.append(fn_r)
+        tpr_list.append(tp_r)
         step_soundness, step_completeness = metrics_calc.get_step_soundness_completeness(
             p_steps, steps, p_alerts, alerts, UNDETERMINED)
         step_soundness_list.append(step_soundness)
@@ -218,17 +222,21 @@ if __name__ == '__main__':
             p_steps, steps, UNDETERMINED)
         scenario_soundness_list.append(scenario_soundness)
         scenario_completeness_list.append(scenario_completeness)
+        if fn_r > fn:
+            false_negative_scenarios_actual.append(steps)
+            false_negative_scenarios_predicted.append(p_steps)
+        manager.reset(initial_attributes)
 
     with open(args.log, "w") as f:
 
         f.write(
-            f"mean proportion of true negative deviation of reconstruction results from intrusion detection results: {float(np.mean(delta_tn_over_tn_list))}\n")
+            f"mean ID true negatives: {float(np.mean(tn_list))}, mean REC true negatives: {float(np.mean(tnr_list))}\n")
         f.write(
-            f"mean proportion of false positives deviation of reconstruction results from intrusion detection results: {float(np.mean(delta_fp_over_fp_list))}\n")
+            f"mean ID false positives: {float(np.mean(fp_list))}, mean REC false positives: {float(np.mean(fpr_list))}\n")
         f.write(
-            f"mean proportion of false negatives deviation of reconstruction results from intrusion detection results: {float(np.mean(delta_fn_over_fn_list))}\n")
+            f"mean ID false negatives: {float(np.mean(fn_list))}, mean REC false negatives: {float(np.mean(fnr_list))}\n")
         f.write(
-            f"mean proportion of true positives deviation of reconstruction results from intrusion detection results: {float(np.mean(delta_tp_over_tp_list))}\n")
+            f"mean ID true positives: {float(np.mean(tp_list))}, mean REC true positives: {float(np.mean(tpr_list))}\n")
 
         f.write(
             f"mean soundness of reconstructed steps: {float(np.mean(step_soundness_list))}\n")
@@ -246,3 +254,10 @@ if __name__ == '__main__':
             f"mean soundness of reconstructed scenarios: {float(np.mean(scenario_soundness_list))}\n")
         f.write(
             f"mean completeness of reconstructed scenarios: {float(np.mean(scenario_completeness_list))}\n")
+
+    with open(args.log.removesuffix(".txt") + "_fn_generating_scenarios.txt", "w") as f:
+        for i in range(len(false_negative_scenarios_actual)):
+            f.write("actual scenario\n")
+            f.write(", ".join(str(exploit) for exploit in false_negative_scenarios_actual[i]) + "\n")
+            f.write("predicted scenario\n")
+            f.write(", ".join(str(exploit) for exploit in false_negative_scenarios_predicted[i]) + "\n")

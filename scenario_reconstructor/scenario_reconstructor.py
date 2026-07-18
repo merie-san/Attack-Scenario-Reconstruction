@@ -64,12 +64,11 @@ class AttackType:
         return self.identifier == value.identifier and self.preconditions == value.preconditions and self.postconditions == value.postconditions
 
     def __hash__(self) -> int:
-        to_hash = hash(self.identifier)
-        for precondition in self.postconditions:
-            to_hash += hash(precondition)
-        for att in self.postconditions:
-            to_hash += hash(att)
-        return hash(to_hash)
+        return hash((
+            self.identifier,
+            frozenset(self.preconditions),
+            frozenset(self.postconditions),
+        ))
 
     def __str__(self) -> str:
         return self.identifier
@@ -101,6 +100,10 @@ class FlowExploit:
         self.end_time = end_time
         self.anomaly_score = anomaly_score
 
+    def mutate(self, attack_type: AttackType):
+        return FlowExploit(attack_type, [], self.source_ip, self.source_port, self.destination_ip,
+                           self.destination_port, self.protocol, self.start_time, self.end_time, self.anomaly_score)
+
     @cached_property
     def metric_key(self):
         return (
@@ -120,7 +123,8 @@ class FlowExploit:
     def unk_eq(self, value: object, unknown_attack_type: AttackType):
         if not isinstance(value, FlowExploit):
             return False
-        return (self.attack_type == value.attack_type or value.attack_type == unknown_attack_type) and self.source_ip == value.source_ip and self.source_port == value.source_port and self.destination_ip == value.destination_ip and self.protocol == value.protocol and self.start_time == value.start_time and self.end_time == value.end_time
+        return (
+                self.attack_type == value.attack_type or value.attack_type == unknown_attack_type) and self.source_ip == value.source_ip and self.source_port == value.source_port and self.destination_ip == value.destination_ip and self.protocol == value.protocol and self.start_time == value.start_time and self.end_time == value.end_time
 
     def get_flow_exploit_group_id(self) -> str:
         return f"{self.attack_type.identifier}-{self.destination_ip}-{self.source_ip}"
@@ -133,11 +137,14 @@ class FlowExploit:
             hash(self.attack_type) + hash(self.source_ip) + hash(self.source_port) + hash(self.destination_ip) + hash(
                 self.destination_port) + hash(self.protocol) + hash(self.start_time) + hash(self.end_time))
 
+    def __repr__(self):
+        return str(self)
+
 
 class Exploit:
 
     def __init__(self, attack_type: AttackType, size: int, source_ip: str, destination_ip: str, start_time: datetime,
-                 end_time: datetime, mean_interflow_time: float, std_interflow_time: float) -> None:
+                 end_time: datetime, mean_interflow_time: float = -1, std_interflow_time: float = -1) -> None:
         self.attack_type = attack_type
         self.size = size
         self.destination_ip = destination_ip
@@ -149,7 +156,7 @@ class Exploit:
 
     def get_exploit_group_id(self) -> str:
         return f"{self.attack_type.identifier}-{self.destination_ip}-{self.source_ip}"
-    
+
     @cached_property
     def metric_key(self):
         return (
@@ -160,24 +167,32 @@ class Exploit:
     def __eq__(self, value: object) -> bool:
         if not isinstance(value, Exploit):
             return False
-        return self.attack_type == value.attack_type and self.size == value.size and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip and self.start_time == value.start_time and self.end_time == value.end_time and self.mean_interflow_time - 0.0001 <= value.mean_interflow_time <= self.mean_interflow_time + 0.0001 and self.std_interflow_time - 0.0001 <= value.std_interflow_time <= self.std_interflow_time + 0.0001
+        return self.attack_type == value.attack_type and self.size == value.size and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip and self.start_time == value.start_time and self.end_time == value.end_time and (
+                (
+                        self.mean_interflow_time - 0.0001 <= value.mean_interflow_time <= self.mean_interflow_time + 0.0001 and self.std_interflow_time - 0.0001 <= value.std_interflow_time <= self.std_interflow_time + 0.0001) or (
+                        self.std_interflow_time == self.mean_interflow_time == -1))
 
     def approx_match(self, value: object, tolerance: timedelta, unknown_attack_type: AttackType | None = None) -> bool:
         if not isinstance(value, Exploit):
             return False
-        return self.attack_type == value.attack_type and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip and self.start_time - tolerance <= value.start_time <= self.start_time + tolerance and self.end_time - tolerance <= value.end_time <= self.end_time + tolerance if not unknown_attack_type else (self.attack_type == value.attack_type or value.attack_type == unknown_attack_type) and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip and self.start_time - tolerance <= value.start_time <= self.start_time + tolerance and self.end_time - tolerance <= value.end_time <= self.end_time + tolerance
+        return self.attack_type == value.attack_type and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip and self.start_time - tolerance <= value.start_time <= self.start_time + tolerance and self.end_time - tolerance <= value.end_time <= self.end_time + tolerance if not unknown_attack_type else (
+                                                                                                                                                                                                                                                                                                                                                   self.attack_type == value.attack_type or value.attack_type == unknown_attack_type) and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip and self.start_time - tolerance <= value.start_time <= self.start_time + tolerance and self.end_time - tolerance <= value.end_time <= self.end_time + tolerance
 
     def approx_match_no_timing(self, value: object, unknown_attack_type: AttackType | None = None) -> bool:
         if not isinstance(value, Exploit):
             return False
-        return self.attack_type == value.attack_type and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip if not unknown_attack_type else (self.attack_type == value.attack_type or value.attack_type == unknown_attack_type) and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip
+        return self.attack_type == value.attack_type and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip if not unknown_attack_type else (
+                                                                                                                                                                                   self.attack_type == value.attack_type or value.attack_type == unknown_attack_type) and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip
 
     def __str__(self) -> str:
         return f"Exploit(attack_type={self.attack_type.identifier}, size={self.size}, source_ip={self.source_ip}, destination_ip={self.destination_ip}, start_time={self.start_time.isoformat()}, end_time={self.end_time.isoformat()}, mean_ift={self.mean_interflow_time}, std_ift={self.std_interflow_time})"
 
     def __hash__(self):
         return hash(hash(self.attack_type) + hash(self.size) + hash(self.destination_ip) + hash(self.source_ip) + hash(
-            self.start_time) + hash(self.end_time) + hash(self.mean_interflow_time) + hash(self.std_interflow_time))
+            self.start_time) + hash(self.end_time) + hash(self.mean_interflow_time) + hash(
+            self.std_interflow_time)) if self.mean_interflow_time != -1 and self.std_interflow_time != -1 else hash(
+            hash(self.attack_type) + hash(self.size) + hash(self.destination_ip) + hash(self.source_ip) + hash(
+                self.start_time) + hash(self.end_time))
 
 
 class StringToExploitConverter:
@@ -203,7 +218,7 @@ class StringToExploitConverter:
         return FlowExploit(attack_type, [], flow_exploit_dict["source_ip"], flow_exploit_dict["source_port"],
                            flow_exploit_dict["destination_ip"], flow_exploit_dict["destination_port"],
                            flow_exploit_dict["protocol"], datetime.fromisoformat(
-                               flow_exploit_dict["start_time"]),
+                flow_exploit_dict["start_time"]),
                            datetime.fromisoformat(
                                flow_exploit_dict["end_time"]),
                            float(flow_exploit_dict["anomaly_score"]))
@@ -225,9 +240,9 @@ class StringToExploitConverter:
                 "Found attack type not defined in the provided list")
         return Exploit(attack_type, int(exploit_dict["size"]), exploit_dict["source_ip"],
                        exploit_dict["destination_ip"], datetime.fromisoformat(
-                           exploit_dict["start_time"]),
+                exploit_dict["start_time"]),
                        datetime.fromisoformat(exploit_dict["end_time"]), float(
-                           exploit_dict["mean_ift"]),
+                exploit_dict["mean_ift"]),
                        float(exploit_dict["std_ift"]))
 
 
@@ -391,7 +406,7 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
             if flow_exploit.destination_ip in self.seen_external_hosts_dict:
                 destination_host = self.seen_external_hosts_dict[flow_exploit.destination_ip]
             else:
-                destination_host = Host(flow_exploit.source_ip)
+                destination_host = Host(flow_exploit.destination_ip)
                 destination_host.update_compromise_attributes(
                     self.external_host_attributes)
                 self.seen_external_hosts_dict[flow_exploit.destination_ip] = destination_host
@@ -517,8 +532,8 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
 
     def log_exploits(self, ref_flow_exploit: FlowExploit):
         if ref_flow_exploit.get_flow_exploit_group_id() not in self.flow_exploits_dict or ref_flow_exploit.get_flow_exploit_group_id() not in self.exploits_dict or len(
-            self.exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]) == 0 or len(
-                self.flow_exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]) == 0:
+                self.exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]) == 0 or len(
+            self.flow_exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()]) == 0:
             raise RuntimeError(
                 "Tried to log exploits while not having any exploit")
         with open(self.flow_exploit_log_path, "a") as f_log:
@@ -551,7 +566,7 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
 
     def get_flow_exploit_group_length(self, ref_flow_exploit: FlowExploit) -> int:
         return len(self.flow_exploits_dict[
-            ref_flow_exploit.get_flow_exploit_group_id()]) if ref_flow_exploit.get_flow_exploit_group_id() in self.flow_exploits_dict else 0
+                       ref_flow_exploit.get_flow_exploit_group_id()]) if ref_flow_exploit.get_flow_exploit_group_id() in self.flow_exploits_dict else 0
 
     def get_state_sequence_length(self):
         return len(self.state_sequence)
@@ -601,7 +616,7 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
                                     datetime.fromtimestamp(flow_exploit["start_time"], timezone.utc), -1, -1))
         exploits.sort(key=lambda ex: ex.start_time)
         self.exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()
-                           ] = exploits
+        ] = exploits
 
     def update_exploits_all(self):
         for _, flow_exploit_list in self.flow_exploits_dict.items():

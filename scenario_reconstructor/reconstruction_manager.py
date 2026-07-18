@@ -2,7 +2,7 @@ from scenario_reconstructor.scenario_reconstructor import FlowExploit, AttackTyp
     StarNetworkAttackGraphBasedScenarioReconstructor, Exploit, HostAttribute, Host
 from scenario_reconstructor.attack_mapper import AttackMapper
 from event_convertor.flow_event import FlowEvent
-from typing import cast, Any
+from typing import cast
 import pandas as pd
 from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import StandardScaler
@@ -18,9 +18,9 @@ class ExploitGenerator:
     def to_flow_exploit(self, flow_event: FlowEvent) -> FlowExploit:
         if flow_event.anomaly_score < self.suspect_threshold:
             raise RuntimeError("The flow event cannot considered an anomaly")
-        mapped_types = self.mapper.map(flow_event)
-        return FlowExploit(mapped_types[-1] if len(mapped_types) > 0 else self.unknown_attack,
-                           mapped_types[:-1] if len(mapped_types) > 0 else [],
+        main_type, secondary_types = self.mapper.map(flow_event)
+        return FlowExploit(main_type if main_type else self.unknown_attack,
+                           secondary_types,
                            flow_event.source_ip,
                            flow_event.source_port, flow_event.destination_ip, flow_event.destination_port,
                            flow_event.protocol, flow_event.start_time, flow_event.end_time, flow_event.anomaly_score)
@@ -93,20 +93,22 @@ class ScenarioReconstructionManager:
                     self._check_and_log(anomaly)
                 else:
                     reqs = self.reconstructor.compute_requirements(anomaly)
-                    if reqs:
+                    if reqs is not None:
+
                         if len(reqs) == 0:
                             raise RuntimeError(
                                 "The anomaly should have been directly addable to the attack graph")
+
                         investigation_dict = {}
                         for req in reqs:
                             for group_id, suspect_list in self.suspect_dict.items():
                                 split = group_id.split("-")
                                 if split[0] == req.attack_type.identifier and split[
-                                        1] == req.acceptable_destination_ip and split[
-                                        2] in req.acceptable_source_ips and len(suspect_list) > 0:
+                                    1] == req.acceptable_destination_ip and split[
+                                    2] in req.acceptable_source_ips and len(suspect_list) > 0:
                                     investigation_dict[group_id] = suspect_list
 
-                        if len(investigation_dict) == 0:
+                        if len(investigation_dict.keys()) == 0:
                             found, anomaly = self._try_alternative_types(
                                 anomaly)
                             if found:
@@ -139,14 +141,15 @@ class ScenarioReconstructionManager:
 
     def _try_alternative_types(self, anomaly: FlowExploit) -> tuple[bool, FlowExploit]:
         for alternative in anomaly.attack_type_alternatives:
-            anomaly.attack_type = alternative
-            reqs = self.reconstructor.compute_requirements(anomaly)
 
-            if not reqs:
+            m_anomaly = anomaly.mutate(alternative)
+            reqs = self.reconstructor.compute_requirements(m_anomaly)
+
+            if reqs is None:
                 continue
 
             if len(reqs) == 0:
-                return True, anomaly
+                return True, m_anomaly
 
             investigation_dict = {}
             for req in reqs:
@@ -154,34 +157,32 @@ class ScenarioReconstructionManager:
                 for group_id, suspect_list in self.suspect_dict.items():
                     split = group_id.split("-")
                     if split[0] == req.attack_type.identifier and split[
-                            1] == req.acceptable_destination_ip and split[
-                            2] in req.acceptable_source_ips and len(suspect_list) > 0:
+                        1] == req.acceptable_destination_ip and split[
+                        2] in req.acceptable_source_ips and len(suspect_list) > 0:
                         investigation_dict[group_id] = suspect_list
-                    
+
             if len(investigation_dict.keys()) == 0:
                 continue
-            
+
             self._recover_fns(investigation_dict)
-            return True, anomaly
+            return True, m_anomaly
 
         return False, anomaly
 
-    def _recover_fns(self, investigation_dict: dict[Any, Any]):
+    def _recover_fns(self, investigation_dict):
         highest_score = 0
         fns = []
-        chosen_attack = None
+        winning_group_id: str | None = None
 
         for group_id, investigation_list in investigation_dict.items():
-            mean_anomaly_score, flow_exploit_cluster = ScenarioReconstructionManager._find_most_recent_flow_cluster(
-                investigation_list)
+            mean_anomaly_score, flow_exploit_cluster = self._find_most_recent_flow_cluster(investigation_list)
             if mean_anomaly_score * len(flow_exploit_cluster) > highest_score:
                 highest_score = mean_anomaly_score * len(flow_exploit_cluster)
                 fns = flow_exploit_cluster
-                chosen_attack = group_id.split("-")[0]
+                winning_group_id = group_id
 
-        for group_id in investigation_dict:
-            if group_id.split("-")[0] == chosen_attack:
-                self.suspect_dict[group_id] = []
+        if winning_group_id is not None:
+            self.suspect_dict[winning_group_id] = []
 
         self.fns.extend(fns)
         for fn in fns:
@@ -219,3 +220,5 @@ class ScenarioReconstructionManager:
     def reset(self, initial_attributes: dict[Host, set[HostAttribute]]):
         self.reconstructor.reset(initial_attributes)
         self.suspect_dict = {}
+        self.fps = []
+        self.fns = []
