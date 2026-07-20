@@ -217,14 +217,28 @@ class MetricsCalculator:
         actual_steps = sorted(actual_steps, key=lambda x: x.start_time)
         predicted_steps = sorted(predicted_steps, key=lambda x: x.start_time)
 
-        actual_pairs = {(actual_steps[i], actual_steps[j]) for i in range(len(actual_steps)) for j in
-                        range(i + 1, len(actual_steps)) if
-                        actual_steps[i] in matches.values() and actual_steps[j] in matches.values()}
+        matched_actual_steps = []
 
-        predicted_pairs = {(matches[predicted_steps[i]], matches[predicted_steps[j]]) for i in
-                           range(len(predicted_steps)) for j in range(i + 1, len(predicted_steps)) if
-                           predicted_steps[i] in matches.keys() and predicted_steps[j] in matches.keys() and matches[
-                               predicted_steps[i]] != matches[predicted_steps[j]]}
+        for step in actual_steps:
+            if step in matches.values():
+                matched_actual_steps.append(step)
+
+        actual_pairs = {(matched_actual_steps[i], matched_actual_steps[j])
+                        for i in range(len(matched_actual_steps))
+                        for j in range(i + 1, len(matched_actual_steps))}
+
+        matched_predicted_steps = []
+
+        for step in predicted_steps:
+            if step in matches.keys():
+                if matches[step] in matched_predicted_steps:
+                    continue
+                else:
+                    matched_predicted_steps.append(matches[step])
+
+        predicted_pairs = {(matched_predicted_steps[i], matched_predicted_steps[j])
+                           for i in range(len(matched_predicted_steps))
+                           for j in range(i + 1, len(matched_predicted_steps))}
 
         return actual_pairs, predicted_pairs, predicted_pairs & actual_pairs
 

@@ -38,17 +38,17 @@ class TestMapper(unittest.TestCase):
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.8,
                                attack_scores={"attack_1": 0.02, "attack_2": 0.01})
-        self.assertEqual(len(self.mapper.map(flow_event)),0)
+        self.assertEqual(len(self.mapper.map(flow_event)[1]),0)
         flow_event = FlowEvent(source_ip="192.168.1.1", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.8,
                                attack_scores={"attack_1": 0.11, "attack_2": 0.01})
-        self.assertEqual(self.mapper.map(flow_event)[-1], self.attack1)       
+        self.assertEqual(self.mapper.map(flow_event)[0], self.attack1)
         flow_event = FlowEvent(source_ip="192.168.1.1", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.8,
                                attack_scores={"attack_1": 0.11, "attack_2": 0.3})
-        self.assertEqual(self.mapper.map(flow_event)[-1], self.attack2)             
+        self.assertEqual(self.mapper.map(flow_event)[0], self.attack2)
 
 
 if __name__ == '__main__':
