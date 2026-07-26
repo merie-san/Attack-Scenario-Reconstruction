@@ -7,7 +7,11 @@ dataset_files = ['iforest_lr_rec_dataset.csv',
                  'logistic_regression_lr_rec_dataset.csv',
                  'xgb_gnb_rec_dataset.csv',
                  'xgb_xgb_rec_dataset.csv',
-                 'xgb_lr_rec_dataset.csv', ]
+                 'xgb_lr_rec_dataset.csv',
+                 'xgb_perfect_rec_dataset.csv',
+                 'perfect_xgb_rec_dataset.csv',
+                 'perfect_perfect_rec_dataset.csv',
+                 ]
 out_root = './data/result logs/'
 
 N_SCENARIOS = 100
@@ -32,6 +36,6 @@ for out_file, p in file_dict.items():
         print(
             f"evaluating reconstruction mechanism for {p[0]} with anomaly threshold {p[1]}, suspect threshold {p[2]}, type threshold {TYPE_THRESHOLD} and torelance {TORELANCE}")
         code = os.system(
-            f"python3 -m scenario_reconstructor.reconstruct_cAPTure -f \"{p[0]}\" -t {N_SCENARIOS} --anomaly-threshold {p[1]} --suspect-threshold {p[2]} --type-threshold {TYPE_THRESHOLD} --torelance {TORELANCE} -l \"{out_file}\"")
+            f"python3 -m scenario_reconstructor.reconstruct_cAPTure -f \"{p[0]}\" -t {N_SCENARIOS} --anomaly-threshold {p[1]} --suspect-threshold {p[2]} --type-threshold {TYPE_THRESHOLD} --tolerance {TORELANCE} -l \"{out_file}\"")
         if code != 0:
             print(f"FAILED (exit {code}): {out_file}")

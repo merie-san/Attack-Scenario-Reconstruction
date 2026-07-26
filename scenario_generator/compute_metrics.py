@@ -231,10 +231,7 @@ class MetricsCalculator:
 
         for step in predicted_steps:
             if step in matches.keys():
-                if matches[step] in matched_predicted_steps:
-                    continue
-                else:
-                    matched_predicted_steps.append(matches[step])
+                matched_predicted_steps.append(matches[step])
 
         predicted_pairs = {(matched_predicted_steps[i], matched_predicted_steps[j])
                            for i in range(len(matched_predicted_steps))
