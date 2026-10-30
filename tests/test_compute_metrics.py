@@ -231,18 +231,13 @@ class TestCalculator(RegressionCase):
         self.assertEqual(fn,1)
         self.assertEqual(tp,5)
 
-    def test_timed_scenario_step_precision(self):
-        self.assertEqual(self.calculator.get_scenario_step_precision(self.predicted_steps, self.actual_steps, 1000, UNDETERMINED), 0.2)
+    def test_scenario_step_precision(self):
+        # 5 predicted steps: 3 match the 3 actual steps via interval overlap, 1 is an FP, and 1 is a duplicate att_2 fragment -> 3 / 5 = 0.6
+        self.assertEqual(self.calculator.get_scenario_step_precision(self.predicted_steps, self.actual_steps, 1000, UNDETERMINED), 0.6)
 
-    def test_untimed_scenario_step_precision(self):
-        # BUG-04: only one of the two att_2 predictions can match the actual step.
-        self.assertEqual(self.calculator.get_scenario_step_precision_no_timing(self.predicted_steps, self.actual_steps, UNDETERMINED), 0.6)
-
-    def test_timed_scenario_step_recall(self):
-        self.assertEqual(self.calculator.get_scenario_step_recall(self.predicted_steps, self.actual_steps, 1000, UNDETERMINED), 1/3)
-
-    def test_untimed_scenario_step_recall(self):
-        self.assertEqual(self.calculator.get_scenario_step_recall_no_timing(self.predicted_steps,self.actual_steps, UNDETERMINED), 1)
+    def test_scenario_step_recall(self):
+        # All 3 actual steps overlap with a predicted step -> 3 / 3 = 1.0
+        self.assertEqual(self.calculator.get_scenario_step_recall(self.predicted_steps, self.actual_steps, 1000, UNDETERMINED), 1.0)
 
     def test_get_scenario_soundness_completeness(self):
         self.actual_steps.append(Exploit(ATTACK_3, 2, "10.0.0.6", "10.0.0.10",  datetime(2001, 10, 10, 0, 1, 3), datetime(2001, 10, 10, 0, 1, 38), (datetime(2001, 10, 10, 0, 1, 38) - datetime(2001, 10, 10, 0, 1, 2)).total_seconds(), 0))

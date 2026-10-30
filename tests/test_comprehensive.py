@@ -364,7 +364,7 @@ class TestComprehensive(RegressionCase):
         self.assertEqual(len(p_alerts_t), len(self.alerts))
 
         for i in range(len(p_steps_t)):
-            self.assertTrue(any(p_steps_t[i].approx_match_no_timing(self.steps[j]) for j in range(len(self.steps))))
+            self.assertTrue(any(p_steps_t[i].approx_match(self.steps[j]) for j in range(len(self.steps))))
 
         for i in range(len(p_alerts_t)):
             self.assertEqual(p_alerts_t[i], self.alerts[i])

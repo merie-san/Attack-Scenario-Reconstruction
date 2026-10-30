@@ -163,8 +163,6 @@ if __name__ == '__main__':
     step_completeness_list = []
     scenario_recall_list = []
     scenario_precision_list = []
-    scenario_recall_nt_list = []
-    scenario_precision_nt_list = []
     scenario_soundness_list = []
     scenario_completeness_list = []
     false_negative_scenarios_actual = []
@@ -214,10 +212,6 @@ if __name__ == '__main__':
             p_steps, steps, args.tolerance, UNDETERMINED))
         scenario_precision_list.append(metrics_calc.get_scenario_step_precision(
             p_steps, steps, args.tolerance, UNDETERMINED))
-        scenario_recall_nt_list.append(
-            metrics_calc.get_scenario_step_recall_no_timing(p_steps, steps, UNDETERMINED))
-        scenario_precision_nt_list.append(
-            metrics_calc.get_scenario_step_precision_no_timing(p_steps, steps, UNDETERMINED))
         scenario_soundness, scenario_completeness = metrics_calc.get_scenario_soundness_completeness(
             p_steps, steps, UNDETERMINED)
         scenario_soundness_list.append(scenario_soundness)
@@ -246,10 +240,6 @@ if __name__ == '__main__':
             f"mean precision of reconstructed scenarios: {float(np.mean(scenario_precision_list))}\n")
         f.write(
             f"mean recall of reconstructed scenarios: {float(np.mean(scenario_recall_list))}\n")
-        f.write(
-            f"mean precision of reconstructed scenarios (no timing): {float(np.mean(scenario_precision_nt_list))}\n")
-        f.write(
-            f"mean recall of reconstructed scenarios (no timing): {float(np.mean(scenario_recall_nt_list))}\n")
         f.write(
             f"mean soundness of reconstructed scenarios: {float(np.mean(scenario_soundness_list))}\n")
         f.write(

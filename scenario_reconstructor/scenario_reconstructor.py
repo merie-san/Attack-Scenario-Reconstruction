@@ -172,17 +172,26 @@ class Exploit:
                         self.mean_interflow_time - 0.0001 <= value.mean_interflow_time <= self.mean_interflow_time + 0.0001 and self.std_interflow_time - 0.0001 <= value.std_interflow_time <= self.std_interflow_time + 0.0001) or (
                         self.std_interflow_time == self.mean_interflow_time == -1))
 
-    def approx_match(self, value: object, tolerance: timedelta, unknown_attack_type: AttackType | None = None) -> bool:
-        if not isinstance(value, Exploit):
+    def _matches_context(self, value: "Exploit", unknown_attack_type: AttackType | None = None) -> bool:
+        if self.source_ip != value.source_ip or self.destination_ip != value.destination_ip:
             return False
-        return self.attack_type == value.attack_type and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip and self.start_time - tolerance <= value.start_time <= self.start_time + tolerance and self.end_time - tolerance <= value.end_time <= self.end_time + tolerance if not unknown_attack_type else (
-                                                                                                                                                                                                                                                                                                                                                   self.attack_type == value.attack_type or value.attack_type == unknown_attack_type) and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip and self.start_time - tolerance <= value.start_time <= self.start_time + tolerance and self.end_time - tolerance <= value.end_time <= self.end_time + tolerance
+        if self.attack_type == value.attack_type:
+            return True
+        if unknown_attack_type is not None:
+            return self.attack_type == unknown_attack_type or value.attack_type == unknown_attack_type
+        return False
 
-    def approx_match_no_timing(self, value: object, unknown_attack_type: AttackType | None = None) -> bool:
+    def approx_match(self, value: object, tolerance: timedelta = timedelta(0),
+                     unknown_attack_type: AttackType | None = None) -> bool:
         if not isinstance(value, Exploit):
             return False
-        return self.attack_type == value.attack_type and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip if not unknown_attack_type else (
-                                                                                                                                                                                   self.attack_type == value.attack_type or value.attack_type == unknown_attack_type) and self.source_ip == value.source_ip and self.destination_ip == value.destination_ip
+        if not self._matches_context(value, unknown_attack_type):
+            return False
+        s1, e1 = self.start_time.replace(tzinfo=None), self.end_time.replace(tzinfo=None)
+        s2, e2 = value.start_time.replace(tzinfo=None), value.end_time.replace(tzinfo=None)
+        latest_start = max(s1, s2)
+        earliest_end = min(e1, e2)
+        return latest_start <= earliest_end + tolerance
 
     def __str__(self) -> str:
         return f"Exploit(attack_type={self.attack_type.identifier}, size={self.size}, source_ip={self.source_ip}, destination_ip={self.destination_ip}, start_time={self.start_time.isoformat()}, end_time={self.end_time.isoformat()}, mean_ift={self.mean_interflow_time}, std_ift={self.std_interflow_time})"
@@ -596,7 +605,7 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
             group = group.sort_values("start_time")
             starts = group["start_time"].to_numpy()
             ends = group["end_time"].to_numpy()
-            intervals = starts[1:] - ends[:-1]
+            intervals = (starts[1:] - ends[:-1]) * 1000
             exploits.append(Exploit(ref_flow_exploit.attack_type,
                                     len(group),
                                     ref_flow_exploit.source_ip,
@@ -613,7 +622,8 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
                                     ref_flow_exploit.destination_ip,
                                     datetime.fromtimestamp(
                                         flow_exploit["start_time"], timezone.utc),
-                                    datetime.fromtimestamp(flow_exploit["end_time"], timezone.utc), -1, -1))
+                                    datetime.fromtimestamp(
+                                        flow_exploit["end_time"], timezone.utc), -1, -1))
         exploits.sort(key=lambda ex: ex.start_time)
         self.exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()
         ] = exploits
