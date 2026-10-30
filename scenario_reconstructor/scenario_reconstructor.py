@@ -604,7 +604,7 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
                                     datetime.fromtimestamp(
                                         min(group["start_time"]), timezone.utc),
                                     datetime.fromtimestamp(
-                                        max(group["start_time"]), timezone.utc),
+                                        max(group["end_time"]), timezone.utc),
                                     intervals.mean(),
                                     intervals.std()))
 
@@ -613,7 +613,7 @@ class StarNetworkAttackGraphBasedScenarioReconstructor:
                                     ref_flow_exploit.destination_ip,
                                     datetime.fromtimestamp(
                                         flow_exploit["start_time"], timezone.utc),
-                                    datetime.fromtimestamp(flow_exploit["start_time"], timezone.utc), -1, -1))
+                                    datetime.fromtimestamp(flow_exploit["end_time"], timezone.utc), -1, -1))
         exploits.sort(key=lambda ex: ex.start_time)
         self.exploits_dict[ref_flow_exploit.get_flow_exploit_group_id()
         ] = exploits

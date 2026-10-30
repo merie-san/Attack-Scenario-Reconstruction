@@ -1,5 +1,5 @@
-import unittest
-from datetime import datetime, timezone
+from tests.regression_support import RegressionCase
+from datetime import datetime
 from scenario_reconstructor.scenario_reconstructor import FlowExploit, Exploit, AttackType, HostAttribute
 from scenario_generator.compute_metrics import MetricsCalculator
 import pandas as pd
@@ -17,9 +17,10 @@ ATTACK_3 = AttackType("att_3", set(), set())
 UNDETERMINED = AttackType("unk", set(), set())
 
 
-class TestCalculator(unittest.TestCase):
+class TestCalculator(RegressionCase):
 
     def setUp(self) -> None:
+        super().setUp()
         self.actual_alerts = [
             FlowExploit(ATTACK_1, [], "10.0.0.2", "200", "10.0.0.5", "2000", "6", datetime(
                 2001, 10, 10, 0, 0, 0), datetime(2001, 10, 10, 0, 0, 2), 0.8),
@@ -201,7 +202,19 @@ class TestCalculator(unittest.TestCase):
         sound, compl = self.calculator.get_step_soundness_completeness(
             self.predicted_steps, self.actual_steps, self.predicted_alerts, self.actual_alerts, UNDETERMINED)
         self.assertEqual(sound, 1)
-        self.assertEqual(compl, 0.5)
+        # 5 matched alerts across 3 actual steps (2, 2, 1) -> 3 + 3 + 1 = 7 actual pairs (with self-loops);
+        # predicted steps split step 2 into two singletons -> 3 + 1 + 1 + 1 = 6 predicted/correct pairs -> compl = 6 / 7
+        self.assertAlmostEqual(compl, 6 / 7)
+
+    def test_get_step_soundness_completeness_duplicate_alerts_penalty(self):
+        # Add a duplicate of the first predicted alert (which belongs to predicted_steps[0])
+        dup_predicted_alerts = list(self.predicted_alerts) + [self.predicted_alerts[0]]
+        sound, compl = self.calculator.get_step_soundness_completeness(
+            self.predicted_steps, self.actual_steps, dup_predicted_alerts, self.actual_alerts, UNDETERMINED)
+        # actual_pairs still has 7 pairs (6 of which are matched), while predicted_pairs gets 3 extra pairs
+        # from the duplicate alert in predicted_steps[0] (size 3 -> 6 pairs instead of 3), so total predicted_pairs = 9
+        self.assertAlmostEqual(sound, 6 / 9)
+        self.assertAlmostEqual(compl, 6 / 7)
 
     def test_get_confusion_matrixes_detection(self):
         tn, fp, fn, tp = self.calculator.get_detection_confusion_matrix(
@@ -218,14 +231,22 @@ class TestCalculator(unittest.TestCase):
         self.assertEqual(fn,1)
         self.assertEqual(tp,5)
 
-    def test_scenario_step_methods(self):
+    def test_timed_scenario_step_precision(self):
         self.assertEqual(self.calculator.get_scenario_step_precision(self.predicted_steps, self.actual_steps, 1000, UNDETERMINED), 0.2)
-        self.assertEqual(self.calculator.get_scenario_step_precision_no_timing(self.predicted_steps, self.actual_steps, UNDETERMINED), 0.8)
+
+    def test_untimed_scenario_step_precision(self):
+        # BUG-04: only one of the two att_2 predictions can match the actual step.
+        self.assertEqual(self.calculator.get_scenario_step_precision_no_timing(self.predicted_steps, self.actual_steps, UNDETERMINED), 0.6)
+
+    def test_timed_scenario_step_recall(self):
         self.assertEqual(self.calculator.get_scenario_step_recall(self.predicted_steps, self.actual_steps, 1000, UNDETERMINED), 1/3)
+
+    def test_untimed_scenario_step_recall(self):
         self.assertEqual(self.calculator.get_scenario_step_recall_no_timing(self.predicted_steps,self.actual_steps, UNDETERMINED), 1)
 
     def test_get_scenario_soundness_completeness(self):
         self.actual_steps.append(Exploit(ATTACK_3, 2, "10.0.0.6", "10.0.0.10",  datetime(2001, 10, 10, 0, 1, 3), datetime(2001, 10, 10, 0, 1, 38), (datetime(2001, 10, 10, 0, 1, 38) - datetime(2001, 10, 10, 0, 1, 2)).total_seconds(), 0))
         sound, compl=self.calculator.get_scenario_soundness_completeness(self.predicted_steps, self.actual_steps, UNDETERMINED)
-        self.assertEqual(sound,0.75)
-        self.assertEqual(compl,1)
+        # BUG-01/03: 3 correct pairs, 10 predicted pairs, and 6 actual pairs.
+        self.assertEqual(sound, 0.3)
+        self.assertEqual(compl, 0.5)

@@ -1,13 +1,13 @@
-from scenario_generator.scenario_generator import CAPTureScenarioGenerator
-import unittest
+from tests.regression_support import RegressionCase
 from datetime import datetime, timedelta
 import pandas as pd
 import random
 
 
-class TestScenarioGenerator(unittest.TestCase):
+class TestScenarioGenerator(RegressionCase):
 
     def setUp(self):
+        super().setUp()
         start_time = datetime(2023, 1, 1, 12, 0, 0)
         self.source_df = pd.DataFrame({"timestamp": [start_time + timedelta(minutes=i) for i in range(20)],
                                       "label": ["rec", "rec", "normal", "rec", "normal", "rec", "normal", "bru", "normal", "bru", "bru", "dis", "dis", "rec", "dis", "dis", "ins", "imp", "normal", "rec"],
@@ -15,8 +15,8 @@ class TestScenarioGenerator(unittest.TestCase):
                                        "src_ip": ["10.0.0.1"]*20,
                                        "dst_ip": ["10.0.0.10"]*20
                                        })
-        self.generator = CAPTureScenarioGenerator(
-            dataframe=self.source_df,
+        self.generator = self.make_generator(
+            frame=self.source_df,
             next_attack_dict={"start": ["rec"], "rec": ["rec", "bru"], "bru": [
                 "dis"], "dis": ["dis", "ins"], "ins": ["imp"], "imp": ["end"]},
             enable_src_for={"bru": ["dis"], "ins": ["imp"]},

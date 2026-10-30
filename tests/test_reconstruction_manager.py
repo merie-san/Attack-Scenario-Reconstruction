@@ -1,8 +1,8 @@
 import unittest
-from scenario_reconstructor.scenario_reconstructor import FlowExploit, AttackType, StarNetworkAttackGraphBasedScenarioReconstructor, Preconditions, HostAttribute, Host
+from tests.regression_support import RegressionCase
+from scenario_reconstructor.scenario_reconstructor import FlowExploit, AttackType, Preconditions, HostAttribute, Host
 from scenario_reconstructor.attack_mapper import AttackMapper
-from event_convertor.flow_event import FlowEvent
-from scenario_reconstructor.reconstruction_manager import ExploitGenerator, ScenarioReconstructionManager
+from scenario_reconstructor.reconstruction_manager import ExploitGenerator
 from datetime import datetime
 import os
 
@@ -13,9 +13,10 @@ class TestHostAttributeConc(HostAttribute):
     ATT_3 = "att_3"
 
 
-class TestExploitGenerator(unittest.TestCase):
+class TestExploitGenerator(RegressionCase):
 
     def setUp(self) -> None:
+        super().setUp()
         self.host1 = Host("10.0.0.1")
         self.host2 = Host("10.0.0.2")
         self.attack1 = AttackType("attack_1", {Preconditions({
@@ -29,7 +30,7 @@ class TestExploitGenerator(unittest.TestCase):
             self.mapper, 0.1, self.zero_day)
 
     def test_to_exploit_error(self):
-        flow_event = FlowEvent(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.001,
                                attack_scores={"attack_1": 0.4, "attack_2": 0.4})
@@ -37,7 +38,7 @@ class TestExploitGenerator(unittest.TestCase):
             self.exploit_generator.to_flow_exploit(flow_event)
 
     def test_to_exploit_normal(self):
-        flow_event = FlowEvent(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.7,
                                attack_scores={"attack_1": 0.4, "attack_2": 0.9})
@@ -47,7 +48,7 @@ class TestExploitGenerator(unittest.TestCase):
                                               datetime(2023, 1, 2, 2), 0.7))
 
     def test_to_exploit_unknown(self):
-        flow_event = FlowEvent(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.7,
                                attack_scores={"attack_1": 0.01, "attack_2": 0.01})
@@ -57,9 +58,10 @@ class TestExploitGenerator(unittest.TestCase):
                                               datetime(2023, 1, 2, 2), 0.7))
 
 
-class TestReconstructionManager(unittest.TestCase):
+class TestReconstructionManager(RegressionCase):
 
     def setUp(self) -> None:
+        super().setUp()
         self.host1 = Host("10.0.0.1")
         self.host2 = Host("10.0.0.2")
         self.attack1 = AttackType("attack_1", {Preconditions({
@@ -70,8 +72,11 @@ class TestReconstructionManager(unittest.TestCase):
             TestHostAttributeConc.ATT_3}, True)}, {TestHostAttributeConc.ATT_2})
         self.zero_day = AttackType(
             "zero_day", set(), {TestHostAttributeConc.ATT_2, TestHostAttributeConc.ATT_1})
-        self.scenario_reconstructor = StarNetworkAttackGraphBasedScenarioReconstructor(
-            [self.host1, self.host2], {TestHostAttributeConc.ATT_3, TestHostAttributeConc.ATT_2, TestHostAttributeConc.ATT_1}, [self.attack1, self.attack2, self.attack3, self.zero_day], "./exploits.log", "./flow_exploits.log", "./states.log", "./correlations.log")
+        self.scenario_reconstructor = self.make_reconstructor(
+            attacks=[self.attack1, self.attack2, self.attack3, self.zero_day],
+            internal_hosts=[self.host1, self.host2],
+            external_host_attributes={TestHostAttributeConc.ATT_3, TestHostAttributeConc.ATT_2, TestHostAttributeConc.ATT_1},
+        )
         self.scenario_reconstructor.seen_external_hosts_dict["10.0.0.3"] = Host(
             "10.0.0.3")
         self.scenario_reconstructor.seen_external_hosts_dict["10.0.0.3"].update_compromise_attributes(
@@ -82,17 +87,19 @@ class TestReconstructionManager(unittest.TestCase):
             [self.attack1, self.attack2, self.attack3], self.anomaly_threshold)
         self.exploit_generator = ExploitGenerator(
             self.mapper, 0.1, self.zero_day)
-        self.reconstruction_manager = ScenarioReconstructionManager(
-            self.scenario_reconstructor, self.mapper, self.anomaly_threshold, self.exploit_threshold, self.zero_day, 100,100, 100)
-
-    def tearDown(self) -> None:
-        if os.path.exists("./exploits.log"):
-            os.remove("./exploits.log")
-        if os.path.exists("./states.log"):
-            os.remove("./states.log")
+        self.reconstruction_manager = self.make_manager(
+            reconstructor=self.scenario_reconstructor,
+            mapper=self.mapper,
+            suspect_threshold=self.anomaly_threshold,
+            anomaly_threshold=self.exploit_threshold,
+            unknown_attack=self.zero_day,
+            length_when_log_states=100,
+            length_when_log_exploits=100,
+            suspect_list_max_length=100,
+        )
 
     def test_accept_anomaly_added(self):
-        flow_event = FlowEvent(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.2,
                                attack_scores={"attack_1": 0.4, "attack_2": 0.9, "attack_3": 0})
@@ -103,7 +110,7 @@ class TestReconstructionManager(unittest.TestCase):
                                   datetime(2023, 1, 2, 2), 0.2), self.reconstruction_manager.suspect_dict["attack_2-10.0.0.1-10.0.0.3"])
 
     def test_accept_event_discarted(self):
-        flow_event = FlowEvent(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.001,
                                attack_scores={"attack_1": 0.4, "attack_2": 0.9, "attack_3": 0})
@@ -111,7 +118,7 @@ class TestReconstructionManager(unittest.TestCase):
         self.assertEqual(len(self.reconstruction_manager.suspect_dict), 0)
 
     def test_accept_event_compatible(self):
-        flow_event = FlowEvent(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="10.0.0.3", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.6,
                                attack_scores={"attack_1": 0.4, "attack_2": 0.9, "attack_3": 0})
@@ -132,16 +139,16 @@ class TestReconstructionManager(unittest.TestCase):
                               datetime(2023, 1, 1, 12),
                               datetime(2023, 1, 2, 2), 0.6)
         self.reconstruction_manager.accept(flow_event)
-        self.assertTrue(os.path.exists("./exploits.log"))
-        self.assertTrue(os.path.exists("./states.log"))
-        with open("./exploits.log", "r") as log1, open("./states.log", "r") as log2:
+        self.assertTrue(os.path.exists(self.log_path('exploits.log')))
+        self.assertTrue(os.path.exists(self.log_path('states.log')))
+        with open(self.log_path('exploits.log'), "r") as log1, open(self.log_path('states.log'), "r") as log2:
             lines = [str.strip() for str in log1.readlines()]
             self.assertEqual(len(lines), 3)
             lines = [str.strip() for str in log2.readlines()]
             self.assertEqual(len(lines), 2)
 
     def test_accept_event_incompatible(self):
-        flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.6,
                                attack_scores={"attack_1": 0.4, "attack_2": 0.1, "attack_3": 0.99})
@@ -154,7 +161,7 @@ class TestReconstructionManager(unittest.TestCase):
         self.assertTrue(fps[0].unk_eq(exploit,self.zero_day))
 
     def test_accept_no_anomaly_sat_req_found(self):
-        flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.6,
                                attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3})
@@ -167,7 +174,7 @@ class TestReconstructionManager(unittest.TestCase):
         self.assertTrue(fps[0].unk_eq(exploit,self.zero_day))
 
     def test_accept_single_sat_found(self):
-        flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.6,
                                attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3})
@@ -182,7 +189,7 @@ class TestReconstructionManager(unittest.TestCase):
         self.assertIn(old_exploit, fns)
 
     def test_accept_zero_day(self):
-        flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.9,
                                attack_scores={"attack_1": 0.1, "attack_2": 0.1, "attack_3": 0.1})
@@ -199,7 +206,7 @@ class TestReconstructionManager(unittest.TestCase):
         self.assertEqual(len(self.scenario_reconstructor.state_sequence), 2)
 
     def test_accept_multiple_sat_found(self):
-        flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.6,
                                attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3})
@@ -229,7 +236,7 @@ class TestReconstructionManager(unittest.TestCase):
         self.assertIn(old_exploit_4, fns)
 
     def test_accept_clustering_single_attack_type_with_clusters(self):
-        flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.6,
                                attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3})
@@ -261,7 +268,7 @@ class TestReconstructionManager(unittest.TestCase):
         self.assertIn(old_exploit_3, fns)
 
     def test_accept_clustering_single_attack_type_no_clusters(self):
-        flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 13),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.6,
                                attack_scores={"attack_1": 0.6, "attack_2": 0.1, "attack_3": 0.3})
@@ -291,7 +298,7 @@ class TestReconstructionManager(unittest.TestCase):
         self.assertIn(old_exploit_4, fns)
 
     def test_accept_clustering_multiple_attack_type(self):
-        flow_event = FlowEvent(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="10.0.0.2", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 13),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.6,
                                attack_scores={"attack_1": 0.2, "attack_2": 0.9, "attack_3": 0.3})

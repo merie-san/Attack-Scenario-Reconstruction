@@ -1,17 +1,18 @@
 import unittest
+from tests.regression_support import RegressionCase
 from event_convertor.flow_event import FlowEvent
 from datetime import datetime
 
-class TestFlowEventStringFunctions(unittest.TestCase):
+class TestFlowEventStringFunctions(RegressionCase):
 
     def test_flow_event_to_string_empty_attack_scores(self):
-        flow_event = FlowEvent(source_ip="192.168.1.1", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="192.168.1.1", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.8, attack_scores={})
         self.assertEqual(str(flow_event), "[source_ip=192.168.1.1, source_port=8080, destination_ip=10.0.0.1, destination_port=443, protocol=6, start_time=2023-01-01 12:00:00, end_time=2023-01-02 02:00:00, anomaly_score=0.8]")
-    
+
     def test_flow_event_to_string_attack_scores(self):
-        flow_event = FlowEvent(source_ip="192.168.1.1", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="192.168.1.1", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12),
                                end_time=datetime(2023, 1, 2, 2), anomaly_score=0.8,
                                attack_scores={"attack_1": 0.8, "attack_2": 0.6})
@@ -43,10 +44,10 @@ class TestFlowEventStringFunctions(unittest.TestCase):
         self.assertEqual(flow_event.anomaly_score, 0.8)
         self.assertEqual(flow_event.attack_scores, {"attack_1": 0.8, "attack_2": 0.6})
 
-class TestFlowEventDictFunctions(unittest.TestCase):
+class TestFlowEventDictFunctions(RegressionCase):
 
     def test_flow_event_to_dict_attack_scores(self):
-        flow_event = FlowEvent(source_ip="192.168.1.1", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="192.168.1.1", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12, 0, 0),
                                end_time=datetime(2023, 1, 2, 2, 0, 0), anomaly_score=0.8,
                                attack_scores={"attack_1": 0.8, "attack_2": 0.6})
@@ -62,9 +63,9 @@ class TestFlowEventDictFunctions(unittest.TestCase):
             "attack_1": 0.8,
             "attack_2": 0.6
         })
-    
+
     def test_flow_event_to_dict_empty_attack_scores(self):
-        flow_event = FlowEvent(source_ip="192.168.1.1", source_port="8080", destination_ip="10.0.0.1",
+        flow_event = self.make_event(source_ip="192.168.1.1", source_port="8080", destination_ip="10.0.0.1",
                                destination_port="443", protocol="6", start_time=datetime(2023, 1, 1, 12, 0, 0),
                                end_time=datetime(2023, 1, 2, 2, 0, 0), anomaly_score=0.8, attack_scores={})
         self.assertEqual(flow_event.to_dict(), {
@@ -77,7 +78,7 @@ class TestFlowEventDictFunctions(unittest.TestCase):
             "end_time": datetime(2023, 1, 2, 2, 0, 0),
             "anomaly_score": 0.8,
         })
-    
+
     def test_dict_to_flow_event_empty_attack_scores(self):
         data = {
             "source_ip": "192.168.1.1",
@@ -99,7 +100,7 @@ class TestFlowEventDictFunctions(unittest.TestCase):
         self.assertEqual(flow_event.end_time, datetime(2023, 1, 2, 2, 0, 0))
         self.assertEqual(flow_event.anomaly_score, 0.8)
         self.assertEqual(flow_event.attack_scores, {})
-        
+
     def test_dict_to_flow_event_attack_scores(self):
         data = {
             "source_ip": "192.168.1.1",

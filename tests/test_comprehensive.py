@@ -1,20 +1,24 @@
-import unittest
+from tests.regression_support import RegressionCase
 
 import pandas
 
-from scenario_reconstructor.scenario_reconstructor import FlowExploit, AttackType, \
-    StarNetworkAttackGraphBasedScenarioReconstructor, Preconditions, HostAttribute, Host, Exploit
+from scenario_reconstructor.scenario_reconstructor import FlowExploit, Exploit
 from scenario_reconstructor.attack_mapper import AttackMapper
-from event_convertor.flow_event import FlowEvent
-from scenario_reconstructor.reconstruction_manager import ExploitGenerator, ScenarioReconstructionManager
 from datetime import datetime, timedelta
-import os
-from scenario_reconstructor.reconstruct_cAPTure import *
+from copy import deepcopy
+from event_convertor.flow_event_generator import CAPTureFlowEventConvertor
+from scenario_reconstructor.reconstruct_cAPTure import (
+    ATK_TYPES, BRUTE_FORCE_MALFORMED, BRUTE_FORCE_MALFORMED_NAME,
+    DOLLAR_CHAR, DOLLAR_CHAR_NAME, HOSTS, NMAP_10_T5, NMAP_10_T5_NAME,
+    NMAP_BANNER, NMAP_BANNER_NAME, NMAP_MQTT, NMAP_MQTT_NAME,
+    SCP_INST, SCP_INST_NAME, UNDETERMINED, DollarCharHostAttributes,
+)
 
 
-class TestComprehensive(unittest.TestCase):
+class TestComprehensive(RegressionCase):
 
     def setUp(self):
+        super().setUp()
         self.steps = [Exploit(NMAP_10_T5, 2, "10.0.0.2", "10.0.0.17", datetime(2026, 7, 17, 15, 46, 0),
                               datetime(2026, 7, 17, 15, 46, 1), -1, -1),
                       Exploit(BRUTE_FORCE_MALFORMED, 2, "10.0.0.2", "10.0.0.17", datetime(2026, 7, 17, 15, 47, 30),
@@ -298,15 +302,18 @@ class TestComprehensive(unittest.TestCase):
         self.scenario_df = self.scenario_df.sort_values(by="timestamp")
         self.flow_convertor = CAPTureFlowEventConvertor()
         self.mapper = AttackMapper(ATK_TYPES, 0)
-        self.reconstructor = StarNetworkAttackGraphBasedScenarioReconstructor(HOSTS,
-                                                                              {DollarCharHostAttributes.START_MACHINE},
-                                                                              ATK_TYPES, "../data/exploits.log",
-                                                                              "../data/flow_exploits.log",
-                                                                              "../data/states.log",
-                                                                              "../data/correlations.log")
-        self.manager = ScenarioReconstructionManager(self.reconstructor, self.mapper, 0.1, 0.9,
-                                                     UNDETERMINED)
-        self.flow_convertor = CAPTureFlowEventConvertor()
+        self.reconstructor = self.make_reconstructor(
+            attacks=ATK_TYPES,
+            internal_hosts=deepcopy(HOSTS),
+            external_host_attributes={DollarCharHostAttributes.START_MACHINE},
+        )
+        self.manager = self.make_manager(
+            reconstructor=self.reconstructor,
+            mapper=self.mapper,
+            suspect_threshold=0.1,
+            anomaly_threshold=0.9,
+            unknown_attack=UNDETERMINED,
+        )
 
         self.alerts = [FlowExploit(NMAP_10_T5, [], "10.0.0.2", "40000", "10.0.0.17", "22", "6",
                                    datetime(2026, 7, 17, 15, 46, 0),
