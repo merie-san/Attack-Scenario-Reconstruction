@@ -206,14 +206,12 @@ class TestCalculator(RegressionCase):
         # predicted steps split step 2 into two singletons -> 3 + 1 + 1 + 1 = 6 predicted/correct pairs -> compl = 6 / 7
         self.assertAlmostEqual(compl, 6 / 7)
 
-    def test_get_step_soundness_completeness_duplicate_alerts_penalty(self):
-        # Add a duplicate of the first predicted alert (which belongs to predicted_steps[0])
+    def test_get_step_soundness_completeness_duplicate_alerts_ignored(self):
+        # Duplicate predicted alerts are matched 1-to-1 and excess duplicates do not skew soundness or completeness
         dup_predicted_alerts = list(self.predicted_alerts) + [self.predicted_alerts[0]]
         sound, compl = self.calculator.get_step_soundness_completeness(
             self.predicted_steps, self.actual_steps, dup_predicted_alerts, self.actual_alerts, UNDETERMINED)
-        # actual_pairs still has 7 pairs (6 of which are matched), while predicted_pairs gets 3 extra pairs
-        # from the duplicate alert in predicted_steps[0] (size 3 -> 6 pairs instead of 3), so total predicted_pairs = 9
-        self.assertAlmostEqual(sound, 6 / 9)
+        self.assertEqual(sound, 1)
         self.assertAlmostEqual(compl, 6 / 7)
 
     def test_get_confusion_matrixes_detection(self):
@@ -230,6 +228,26 @@ class TestCalculator(RegressionCase):
         self.assertEqual(fp,1)
         self.assertEqual(fn,1)
         self.assertEqual(tp,5)
+
+    def test_alert_precision(self):
+        # 6 predicted alerts: 5 match the 6 actual alerts 1-to-1, 1 is an FP -> 5 / 6
+        self.assertAlmostEqual(
+            self.calculator.get_alert_precision(self.predicted_alerts, self.actual_alerts, UNDETERMINED),
+            5 / 6,
+        )
+        # Adding a duplicate predicted alert reduces alert precision from 5/6 to 5/7
+        dup_predicted_alerts = list(self.predicted_alerts) + [self.predicted_alerts[0]]
+        self.assertAlmostEqual(
+            self.calculator.get_alert_precision(dup_predicted_alerts, self.actual_alerts, UNDETERMINED),
+            5 / 7,
+        )
+
+    def test_alert_recall(self):
+        # 5 of the 6 actual alerts are matched 1-to-1 -> 5 / 6
+        self.assertAlmostEqual(
+            self.calculator.get_alert_recall(self.predicted_alerts, self.actual_alerts, UNDETERMINED),
+            5 / 6,
+        )
 
     def test_scenario_step_precision(self):
         # 5 predicted steps: 3 match the 3 actual steps via interval overlap, 1 is an FP, and 1 is a duplicate att_2 fragment -> 3 / 5 = 0.6

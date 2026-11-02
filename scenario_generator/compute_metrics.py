@@ -47,40 +47,56 @@ class MetricsCalculator:
         return soundness, completeness
 
     @staticmethod
+    def _match_alerts_one_to_one(predicted_alerts: list[FlowExploit], actual_alerts: list[FlowExploit],
+                                 unknown_attack_type: AttackType | None = None) -> list[tuple[int, FlowExploit, FlowExploit]]:
+        actual_by_key = defaultdict(list)
+        for a_idx, alert in enumerate(actual_alerts):
+            actual_by_key[alert.metric_key].append((a_idx, alert))
+
+        used_actual_indices: set[int] = set()
+        matches: list[tuple[int, FlowExploit, FlowExploit]] = []
+
+        for p_alert in predicted_alerts:
+            for a_idx, candidate in actual_by_key.get(p_alert.metric_key, []):
+                if (not unknown_attack_type and p_alert == candidate) or \
+                        (unknown_attack_type and candidate.unk_eq(p_alert, unknown_attack_type)):
+                    if a_idx not in used_actual_indices:
+                        used_actual_indices.add(a_idx)
+                        matches.append((a_idx, p_alert, candidate))
+                        break
+        return matches
+
+    @staticmethod
+    def get_alert_recall(predicted_alerts: list[FlowExploit], actual_alerts: list[FlowExploit],
+                         unknown_attack_type: AttackType | None = None) -> float:
+        if not actual_alerts:
+            return 0.0
+        matches = MetricsCalculator._match_alerts_one_to_one(
+            predicted_alerts, actual_alerts, unknown_attack_type)
+        return len(matches) / len(actual_alerts)
+
+    @staticmethod
+    def get_alert_precision(predicted_alerts: list[FlowExploit], actual_alerts: list[FlowExploit],
+                            unknown_attack_type: AttackType | None = None) -> float:
+        if not predicted_alerts:
+            return 0.0
+        matches = MetricsCalculator._match_alerts_one_to_one(
+            predicted_alerts, actual_alerts, unknown_attack_type)
+        return len(matches) / len(predicted_alerts)
+
+    @staticmethod
     def _get_aggregation_correlation_pairs(actual_alerts: list[FlowExploit], actual_steps: list[Exploit],
                                            predicted_alerts: list[FlowExploit],
                                            predicted_steps: list[Exploit],
                                            unknown_attack_type: AttackType | None = None) -> tuple[
         set[tuple[int, int]], set[tuple[int, int]], set[tuple[int, int]]]:
-        actual_by_key = defaultdict(list)
-
-        for a_idx, alert in enumerate(actual_alerts):
-            actual_by_key[alert.metric_key].append((a_idx, alert))
-
-        used_actual_indices: set[int] = set()
         actual_matches_by_group = defaultdict(list)
         predicted_matches_by_group = defaultdict(list)
 
-        for p_idx, p_alert in enumerate(predicted_alerts):
-            candidates = actual_by_key.get(p_alert.metric_key, [])
-            matched_candidate: tuple[int, FlowExploit] | None = None
-            has_any_match = False
-
-            for a_idx, candidate in candidates:
-                if (not unknown_attack_type and p_alert == candidate) or \
-                        (unknown_attack_type and candidate.unk_eq(p_alert, unknown_attack_type)):
-                    has_any_match = True
-                    if a_idx not in used_actual_indices:
-                        matched_candidate = (a_idx, candidate)
-                        used_actual_indices.add(a_idx)
-                        break
-
-            if matched_candidate is not None:
-                a_idx, candidate = matched_candidate
-                actual_matches_by_group[candidate.get_flow_exploit_group_id()].append((a_idx, candidate))
-                predicted_matches_by_group[p_alert.get_flow_exploit_group_id()].append((a_idx, p_alert))
-            elif has_any_match:
-                predicted_matches_by_group[p_alert.get_flow_exploit_group_id()].append((-(p_idx + 1), p_alert))
+        for a_idx, p_alert, candidate in MetricsCalculator._match_alerts_one_to_one(
+                predicted_alerts, actual_alerts, unknown_attack_type):
+            actual_matches_by_group[candidate.get_flow_exploit_group_id()].append((a_idx, candidate))
+            predicted_matches_by_group[p_alert.get_flow_exploit_group_id()].append((a_idx, p_alert))
 
         predicted_alerts_by_step = {}
         actual_alerts_by_step = {}
@@ -147,7 +163,7 @@ class MetricsCalculator:
             values.append(int(key in predicted_flows))
 
         tn, fp, fn, tp = confusion_matrix(
-            (scenario_df["label"] != "normal").astype(int), values).ravel()
+            (scenario_df["label"] != "normal").astype(int), labels=[0, 1]).ravel()
 
         return int(tn), int(fp), int(fn), int(tp)
 

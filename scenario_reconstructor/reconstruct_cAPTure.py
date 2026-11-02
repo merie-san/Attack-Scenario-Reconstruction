@@ -159,6 +159,8 @@ if __name__ == '__main__':
     fpr_list = []
     fnr_list = []
     tpr_list = []
+    alert_recall_list = []
+    alert_precision_list = []
     step_soundness_list = []
     step_completeness_list = []
     scenario_recall_list = []
@@ -204,6 +206,10 @@ if __name__ == '__main__':
         fpr_list.append(fp_r)
         fnr_list.append(fn_r)
         tpr_list.append(tp_r)
+        alert_recall_list.append(metrics_calc.get_alert_recall(
+            p_alerts, alerts, UNDETERMINED))
+        alert_precision_list.append(metrics_calc.get_alert_precision(
+            p_alerts, alerts, UNDETERMINED))
         step_soundness, step_completeness = metrics_calc.get_step_soundness_completeness(
             p_steps, steps, p_alerts, alerts, UNDETERMINED)
         step_soundness_list.append(step_soundness)
@@ -232,6 +238,10 @@ if __name__ == '__main__':
         f.write(
             f"mean ID true positives: {float(np.mean(tp_list))}, mean REC true positives: {float(np.mean(tpr_list))}\n")
 
+        f.write(
+            f"mean precision of reconstructed alerts: {float(np.mean(alert_precision_list))}\n")
+        f.write(
+            f"mean recall of reconstructed alerts: {float(np.mean(alert_recall_list))}\n")
         f.write(
             f"mean soundness of reconstructed steps: {float(np.mean(step_soundness_list))}\n")
         f.write(
