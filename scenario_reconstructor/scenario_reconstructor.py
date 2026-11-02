@@ -181,7 +181,7 @@ class Exploit:
             return self.attack_type == unknown_attack_type or value.attack_type == unknown_attack_type
         return False
 
-    def approx_match(self, value: object, tolerance: timedelta = timedelta(0),
+    def approx_match(self, value: object,
                      unknown_attack_type: AttackType | None = None) -> bool:
         if not isinstance(value, Exploit):
             return False
@@ -189,9 +189,7 @@ class Exploit:
             return False
         s1, e1 = self.start_time.replace(tzinfo=None), self.end_time.replace(tzinfo=None)
         s2, e2 = value.start_time.replace(tzinfo=None), value.end_time.replace(tzinfo=None)
-        latest_start = max(s1, s2)
-        earliest_end = min(e1, e2)
-        return latest_start <= earliest_end + tolerance
+        return max(s1, s2) <= min(e1, e2)
 
     def __str__(self) -> str:
         return f"Exploit(attack_type={self.attack_type.identifier}, size={self.size}, source_ip={self.source_ip}, destination_ip={self.destination_ip}, start_time={self.start_time.isoformat()}, end_time={self.end_time.isoformat()}, mean_ift={self.mean_interflow_time}, std_ift={self.std_interflow_time})"

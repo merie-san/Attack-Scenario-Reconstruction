@@ -127,8 +127,6 @@ if __name__ == '__main__':
                         type=float)
     parser.add_argument("--type-threshold", help="threshold for attack type mapping", default=0.2,
                         type=float)
-    parser.add_argument("--tolerance", help="tolerance when comparing timestamps, in milliseconds", default=2000,
-                        type=float)
     args = parser.parse_args()
     if args.anomaly_threshold <= 0 or args.suspect_threshold < 0:
         raise argparse.ArgumentTypeError(
@@ -215,9 +213,9 @@ if __name__ == '__main__':
         step_soundness_list.append(step_soundness)
         step_completeness_list.append(step_completeness)
         scenario_recall_list.append(metrics_calc.get_scenario_step_recall(
-            p_steps, steps, args.tolerance, UNDETERMINED))
+            p_steps, steps, UNDETERMINED))
         scenario_precision_list.append(metrics_calc.get_scenario_step_precision(
-            p_steps, steps, args.tolerance, UNDETERMINED))
+            p_steps, steps, UNDETERMINED))
         scenario_soundness, scenario_completeness = metrics_calc.get_scenario_soundness_completeness(
             p_steps, steps, UNDETERMINED)
         scenario_soundness_list.append(scenario_soundness)

@@ -27,7 +27,7 @@ class TestIdentityAndStateRegressions(RegressionCase):
             self.assertIn(nearby, {first: 'same exploit'},
                           'BUG-06: objects comparing equal must share dictionary identity')
         else:
-            self.assertTrue(first.approx_match(nearby, timedelta(0)))
+            self.assertTrue(first.approx_match(nearby))
 
     def test_B06_exploit_equality_is_symmetric_with_unknown_statistics(self):
         unknown = self.make_step(mean=-1, std=-1)

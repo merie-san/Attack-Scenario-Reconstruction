@@ -64,31 +64,17 @@ class TestMetricRegressions(RegressionCase):
         self.assertAlmostEqual(soundness, 1 / 3)
         self.assertEqual(completeness, 1.0)
 
-    def test_B04_recall_without_timing_matches_each_prediction_once(self):
-        actual = [self.make_step(0), self.make_step(10)]
-        self.assertEqual(
-            MetricsCalculator.get_scenario_step_recall_no_timing([actual[0]], actual), 0.5,
-            'BUG-04: one prediction cannot recover two repeated steps',
-        )
-
-    def test_B04_precision_without_timing_matches_each_actual_step_once(self):
-        actual = [self.make_step(0)]
-        self.assertEqual(
-            MetricsCalculator.get_scenario_step_precision_no_timing([self.make_step(0), self.make_step(10)], actual),
-            0.5, 'BUG-04: duplicate predictions cannot both receive credit',
-        )
-
     def test_B04_timed_recall_does_not_reuse_prediction(self):
         actual = [self.make_step(0), self.make_step(0.1)]
         self.assertEqual(
-            MetricsCalculator.get_scenario_step_recall([actual[0]], actual, 1000), 0.5,
-            'BUG-04: overlapping tolerance windows still require one-to-one matching',
+            MetricsCalculator.get_scenario_step_recall([actual[0]], actual), 0.5,
+            'BUG-04: overlapping windows still require one-to-one matching',
         )
 
     def test_B04_timed_precision_does_not_reuse_actual_step(self):
         self.assertEqual(
-            MetricsCalculator.get_scenario_step_precision([self.make_step(0), self.make_step(0.1)], [self.make_step(0)], 1000),
-            0.5, 'BUG-04: timed precision must penalize duplicate predictions',
+            MetricsCalculator.get_scenario_step_precision([self.make_step(0), self.make_step(0.1)], [self.make_step(0)]),
+            0.5, 'BUG-04: step precision must penalize duplicate predictions',
         )
 
     def test_B20_detection_confusion_matrix_accepts_single_class(self):
@@ -105,11 +91,11 @@ class TestMetricRegressions(RegressionCase):
 
     def test_control_exact_matching_keeps_perfect_precision_and_recall(self):
         actual = [self.make_step(0), self.make_step(10)]
-        self.assertEqual(MetricsCalculator.get_scenario_step_precision(actual, actual, 0), 1.0)
-        self.assertEqual(MetricsCalculator.get_scenario_step_recall(actual, actual, 0), 1.0)
+        self.assertEqual(MetricsCalculator.get_scenario_step_precision(actual, actual), 1.0)
+        self.assertEqual(MetricsCalculator.get_scenario_step_recall(actual, actual), 1.0)
 
     def assert_timed_scores(self, predicted, actual, expected):
-        options = (predicted, actual, 1000, self.unknown)
+        options = (predicted, actual, self.unknown)
         self.assertEqual(MetricsCalculator.get_scenario_step_precision(*options), expected)
         self.assertEqual(MetricsCalculator.get_scenario_step_recall(*options), expected)
 

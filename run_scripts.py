@@ -18,7 +18,6 @@ N_SCENARIOS = 100
 ANOMALY_THRESHOLDS = [0.3, 0.6, 0.9]
 SUSPECT_THRESHOLDS = [0.2, 0.8]
 TYPE_THRESHOLD = 0.1
-TORELANCE = 2000
 
 output_log_prefixes = [out_root + '_'.join(name.split('_')[:-2]) for name in dataset_files]
 file_dict = {}
@@ -34,8 +33,8 @@ import os
 for out_file, p in file_dict.items():
     if p[1] > p[2]:
         print(
-            f"evaluating reconstruction mechanism for {p[0]} with anomaly threshold {p[1]}, suspect threshold {p[2]}, type threshold {TYPE_THRESHOLD} and torelance {TORELANCE}")
+            f"evaluating reconstruction mechanism for {p[0]} with anomaly threshold {p[1]}, suspect threshold {p[2]}, type threshold {TYPE_THRESHOLD}")
         code = os.system(
-            f"python3 -m scenario_reconstructor.reconstruct_cAPTure -f \"{p[0]}\" -t {N_SCENARIOS} --anomaly-threshold {p[1]} --suspect-threshold {p[2]} --type-threshold {TYPE_THRESHOLD} --tolerance {TORELANCE} -l \"{out_file}\"")
+            f"python3 -m scenario_reconstructor.reconstruct_cAPTure -f \"{p[0]}\" -t {N_SCENARIOS} --anomaly-threshold {p[1]} --suspect-threshold {p[2]} --type-threshold {TYPE_THRESHOLD} -l \"{out_file}\"")
         if code != 0:
             print(f"FAILED (exit {code}): {out_file}")

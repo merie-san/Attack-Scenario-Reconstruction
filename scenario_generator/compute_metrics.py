@@ -70,7 +70,7 @@ class MetricsCalculator:
     def get_alert_recall(predicted_alerts: list[FlowExploit], actual_alerts: list[FlowExploit],
                          unknown_attack_type: AttackType | None = None) -> float:
         if not actual_alerts:
-            return 0.0
+            return 1.0 if not predicted_alerts else 0.0
         matches = MetricsCalculator._match_alerts_one_to_one(
             predicted_alerts, actual_alerts, unknown_attack_type)
         return len(matches) / len(actual_alerts)
@@ -79,7 +79,7 @@ class MetricsCalculator:
     def get_alert_precision(predicted_alerts: list[FlowExploit], actual_alerts: list[FlowExploit],
                             unknown_attack_type: AttackType | None = None) -> float:
         if not predicted_alerts:
-            return 0.0
+            return 1.0 if not actual_alerts else 0.0
         matches = MetricsCalculator._match_alerts_one_to_one(
             predicted_alerts, actual_alerts, unknown_attack_type)
         return len(matches) / len(predicted_alerts)
@@ -163,22 +163,20 @@ class MetricsCalculator:
             values.append(int(key in predicted_flows))
 
         tn, fp, fn, tp = confusion_matrix(
-            (scenario_df["label"] != "normal").astype(int), labels=[0, 1]).ravel()
+            (scenario_df["label"] != "normal").astype(int), values, labels=[0, 1]).ravel()
 
         return int(tn), int(fp), int(fn), int(tp)
 
     @staticmethod
     def _match_steps_one_to_one(predicted_steps: list[Exploit], actual_steps: list[Exploit],
-                                tolerance: int = 0,
                                 unknown_attack_type: AttackType | None = None) -> dict[Exploit, Exploit]:
-        tol = timedelta(milliseconds=tolerance)
         used_actual: set[int] = set()
         matches: dict[Exploit, Exploit] = {}
         for p_step in predicted_steps:
             for a_idx, a_step in enumerate(actual_steps):
                 if a_idx in used_actual:
                     continue
-                if a_step.approx_match(p_step, tol, unknown_attack_type):
+                if a_step.approx_match(p_step, unknown_attack_type):
                     matches[p_step] = a_step
                     used_actual.add(a_idx)
                     break
@@ -186,30 +184,27 @@ class MetricsCalculator:
 
     @staticmethod
     def get_scenario_step_recall(predicted_steps: list[Exploit], actual_steps: list[Exploit],
-                                 tolerance: int = 0,
                                  unknown_attack_type: AttackType | None = None) -> float:
         if not actual_steps:
-            return 0.0
+            return 1.0 if not predicted_steps else 0.0
         matches = MetricsCalculator._match_steps_one_to_one(
-            predicted_steps, actual_steps, tolerance, unknown_attack_type)
+            predicted_steps, actual_steps, unknown_attack_type)
         return len(matches) / len(actual_steps)
 
     @staticmethod
     def get_scenario_step_precision(predicted_steps: list[Exploit], actual_steps: list[Exploit],
-                                    tolerance: int = 0,
                                     unknown_attack_type: AttackType | None = None) -> float:
         if not predicted_steps:
-            return 0.0
+            return 1.0 if not actual_steps else 0.0
         matches = MetricsCalculator._match_steps_one_to_one(
-            predicted_steps, actual_steps, tolerance, unknown_attack_type)
+            predicted_steps, actual_steps, unknown_attack_type)
         return len(matches) / len(predicted_steps)
 
     @staticmethod
     def _get_step_matches(predicted_steps: list[Exploit], actual_steps: list[Exploit],
-                          tolerance: int = 0,
                           unknown_attack_type: AttackType | None = None) -> dict[Exploit, Exploit]:
         return MetricsCalculator._match_steps_one_to_one(
-            predicted_steps, actual_steps, tolerance, unknown_attack_type)
+            predicted_steps, actual_steps, unknown_attack_type)
 
     @staticmethod
     def _get_causal_correlation_pairs(actual_steps: list[Exploit], predicted_steps: list[Exploit],
@@ -217,7 +212,7 @@ class MetricsCalculator:
         set[tuple[Exploit, Exploit]], set[tuple[Exploit, Exploit]], set[tuple[Exploit, Exploit]]]:
 
         matches = MetricsCalculator._get_step_matches(
-            predicted_steps, actual_steps, 0, unknown_attack_type
+            predicted_steps, actual_steps, unknown_attack_type
         )
 
         actual_steps = sorted(actual_steps, key=lambda x: x.start_time)
