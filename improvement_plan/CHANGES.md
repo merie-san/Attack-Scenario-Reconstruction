@@ -114,18 +114,17 @@ Attack step identification evaluates the reconstruction of macro attack steps (`
 ### 4. Scenario Causal Reconstruction
 
 #### Motivation & Limitations of Previous Metrics
-Scenario causal reconstruction evaluates whether the causal dependencies between attack steps and the progression toward the attacker's ultimate goal were correctly recovered. Previous approaches had key limitations:
-1. **Flawed Completeness Calculation**: Previous implementations computed causal completeness only over the subset of *already matched* steps rather than against all actual causal relationships, artificially inflating completeness scores (often reporting ~100% even when critical prerequisite steps were missing).
-2. **Rigid Single-Hop Edge Requirements**: Requiring exact 1-hop causal edges between consecutive steps overly penalizes the scenario if a single intermediate step was missed. In multi-step attacks, if step $A$ enables step $B$, and $B$ enables step $C$, but step $B$ was not detected, a reconstructed causal link $A \to C$ preserves the true prerequisite chain. A realistic evaluator must support transitive prerequisite traversal under AND/OR logic.
-3. **Lack of Campaign Goal Reachability Evaluation**: Prior metrics evaluated individual edges in isolation, failing to assess whether the complete attack campaign actually succeeded in reaching its high-level objective (e.g., exfiltrating database records or obtaining root privileges).
+1. **Ordered Pairs Do Not Capture Causality**: The original metric generated causal pairs simply by taking all chronologically ordered step pairs $(S_i, S_j \text{ with } i < j)$. Temporal sequence does not capture causality: it cannot represent parallel or branching attack paths, nor does it verify whether an earlier step actually satisfies the preconditions of a later one.
+2. **Artificially Inflated Completeness**: Completeness was computed only over already matched actual steps rather than the full ground truth, reporting deceptively high scores (often ~100%) even when most steps were missed.
+3. **No Campaign Goal Evaluation**: Pairwise ordering metrics could not assess whether the reconstructed attack campaign actually achieved its ultimate tactical objective.
 
 #### Reasoning behind the Changes
-1. **Formal Temporal AND/OR Attack Graph (`AttackScenarioDAG`)**:
-   - Each attack step acts as an **AND-node** requiring all of its precondition clauses (e.g., source host compromise, target vulnerability) to be satisfied.
-   - Each precondition clause acts as an **OR-node** that can be satisfied by *any* valid prior attack step providing the necessary compromise attributes.
-   - Repeated attacks within the same host/attack group are linked sequentially as chains ($S_i \to S_{i+1}$).
-2. **Causal Completeness with Ancestor Bypass**: To avoid compounding penalties when intermediate steps are missed, clause completeness traverses causal ancestor paths in the ground truth to verify whether an earlier matched ancestor validly satisfies the prerequisite.
-3. **Dedicated Goal Reachability Metric (`is_scenario_detected`)**: Introduces an explicit campaign-level milestone metric that evaluates both goal identification and the recovery of the root-to-goal causal path.
+1. **Temporal AND/OR Attack Graph (`AttackScenarioDAG`)**: Replaces simple ordered chains with a formal DAG where edges reflect verified precondition and postcondition relationships (`is_causally_correlated`):
+   - Steps act as **AND-nodes** over their required precondition clauses.
+   - Precondition clauses act as **OR-nodes** satisfied by any valid prior step providing the necessary compromise attributes.
+   - Repetitions within the same group form sequential chains ($S_i \to S_{i+1}$).
+2. **Clause Completeness with Ancestor Bypass**: Evaluates satisfaction of required precondition clauses rather than raw pairs, searching ancestor paths in the DAG to avoid cascading penalties when intermediate steps are missed.
+3. **Goal Detection (`is_scenario_detected`)**: Explicitly verifies whether the target goal was identified and its root-to-goal causal path recovered above the recovery threshold (default 50%).
 
 #### Metric Definitions & Roles
 
