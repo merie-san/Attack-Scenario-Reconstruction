@@ -8,7 +8,7 @@ from scenario_reconstructor.attack_mapper import AttackMapper
 from scenario_reconstructor.reconstruction_manager import ScenarioReconstructionManager
 from scenario_reconstructor.scenario_reconstructor import HostAttribute, Preconditions, Host, AttackType, \
     StarNetworkAttackGraphBasedScenarioReconstructor
-from scenario_generator.compute_metrics import MetricsCalculator
+from scenario_generator.compute_metrics import AttackScenarioDAG, MetricsCalculator
 
 SCP_INST_NAME = "scp_inst"
 
@@ -208,16 +208,18 @@ if __name__ == '__main__':
             p_alerts, alerts, UNDETERMINED))
         alert_precision_list.append(metrics_calc.get_alert_precision(
             p_alerts, alerts, UNDETERMINED))
+        actual_dag = AttackScenarioDAG(steps)
+        predicted_dag = AttackScenarioDAG(p_steps)
         step_soundness, step_completeness = metrics_calc.get_step_soundness_completeness(
-            p_steps, steps, p_alerts, alerts, UNDETERMINED)
+            predicted_dag, actual_dag, p_alerts, alerts, UNDETERMINED)
         step_soundness_list.append(step_soundness)
         step_completeness_list.append(step_completeness)
         scenario_recall_list.append(metrics_calc.get_scenario_step_recall(
-            p_steps, steps, UNDETERMINED))
+            predicted_dag, actual_dag, UNDETERMINED))
         scenario_precision_list.append(metrics_calc.get_scenario_step_precision(
-            p_steps, steps, UNDETERMINED))
+            predicted_dag, actual_dag, UNDETERMINED))
         scenario_soundness, scenario_completeness = metrics_calc.get_scenario_soundness_completeness(
-            p_steps, steps, UNDETERMINED)
+            predicted_dag, actual_dag, UNDETERMINED)
         scenario_soundness_list.append(scenario_soundness)
         scenario_completeness_list.append(scenario_completeness)
         if fn_r > fn:

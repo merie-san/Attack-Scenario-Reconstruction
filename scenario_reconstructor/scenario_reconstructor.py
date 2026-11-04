@@ -7,6 +7,13 @@ import pandas as pd
 from typing import TypeVar
 
 
+def normalize_timestamp(timestamp: datetime) -> datetime:
+    """Return naive UTC for aware timestamps, preserving naive timestamps as-is."""
+    if timestamp.utcoffset() is not None:
+        return timestamp.astimezone(timezone.utc).replace(tzinfo=None)
+    return timestamp
+
+
 class HostAttribute(Enum):
     pass
 
@@ -187,8 +194,8 @@ class Exploit:
             return False
         if not self._matches_context(value, unknown_attack_type):
             return False
-        s1, e1 = self.start_time.replace(tzinfo=None), self.end_time.replace(tzinfo=None)
-        s2, e2 = value.start_time.replace(tzinfo=None), value.end_time.replace(tzinfo=None)
+        s1, e1 = normalize_timestamp(self.start_time), normalize_timestamp(self.end_time)
+        s2, e2 = normalize_timestamp(value.start_time), normalize_timestamp(value.end_time)
         return max(s1, s2) <= min(e1, e2)
 
     def __str__(self) -> str:
