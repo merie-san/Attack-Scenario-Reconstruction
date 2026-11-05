@@ -1,14 +1,18 @@
 import argparse
 import os
-import pandas as pd
+
 import numpy as np
-from scenario_generator.scenario_generator import CAPTureScenarioGenerator
+import pandas as pd
+
 from event_convertor.flow_event_generator import CAPTureFlowEventConvertor
+from metrics import MetricsCalculator
+from scenario_generator.scenario_generator import CAPTureScenarioGenerator
 from scenario_reconstructor.attack_mapper import AttackMapper
-from scenario_reconstructor.reconstruction_manager import ScenarioReconstructionManager
-from scenario_reconstructor.scenario_reconstructor import HostAttribute, Preconditions, Host, AttackType, \
-    StarNetworkAttackGraphBasedScenarioReconstructor
-from scenario_generator.compute_metrics import AttackScenarioDAG, MetricsCalculator
+from scenario_reconstructor.dag import AttackScenarioDAG
+from scenario_reconstructor.engine import ScenarioReconstructor
+from scenario_reconstructor.manager import ReconstructionManager
+from scenario_reconstructor.models import AttackType, Host, HostAttribute, Precondition
+
 
 SCP_INST_NAME = "scp_inst"
 
@@ -75,29 +79,29 @@ class DollarCharHostAttributes(HostAttribute):
     CRASHED = "crashed"
 
 
-NMAP_10_T5 = AttackType(NMAP_10_T5_NAME, {Preconditions({DollarCharHostAttributes.START_MACHINE}, True)},
+NMAP_10_T5 = AttackType(NMAP_10_T5_NAME, {Precondition({DollarCharHostAttributes.START_MACHINE}, True)},
                         {DollarCharHostAttributes.SSH_DISCOVERED})
-NMAP_MQTT = AttackType(NMAP_MQTT_NAME, {Preconditions({DollarCharHostAttributes.SSH_COMPROMISED}, True)},
+NMAP_MQTT = AttackType(NMAP_MQTT_NAME, {Precondition({DollarCharHostAttributes.SSH_COMPROMISED}, True)},
                        {DollarCharHostAttributes.MQTT_DISCOVERED})
-NMAP_BANNER = AttackType(NMAP_BANNER_NAME, {Preconditions({DollarCharHostAttributes.SSH_COMPROMISED}, True)},
+NMAP_BANNER = AttackType(NMAP_BANNER_NAME, {Precondition({DollarCharHostAttributes.SSH_COMPROMISED}, True)},
                          {DollarCharHostAttributes.MQTT_DISCOVERED})
 BRUTE_FORCE_MALFORMED = AttackType(BRUTE_FORCE_MALFORMED_NAME,
-                                   {Preconditions({DollarCharHostAttributes.START_MACHINE}, True),
-                                    Preconditions({DollarCharHostAttributes.SSH_DISCOVERED}, False)},
+                                   {Precondition({DollarCharHostAttributes.START_MACHINE}, True),
+                                    Precondition({DollarCharHostAttributes.SSH_DISCOVERED}, False)},
                                    {DollarCharHostAttributes.SSH_COMPROMISED})
-DOLLAR_CHAR = AttackType(DOLLAR_CHAR_NAME, {Preconditions({DollarCharHostAttributes.MQTT_MACHINE}, True),
-                                            Preconditions(
+DOLLAR_CHAR = AttackType(DOLLAR_CHAR_NAME, {Precondition({DollarCharHostAttributes.MQTT_MACHINE}, True),
+                                            Precondition(
                                                 {DollarCharHostAttributes.SSH_COMPROMISED}, True),
-                                            Preconditions(
+                                            Precondition(
                                                 {DollarCharHostAttributes.SCRIPTS_INSTALLED}, True),
-                                            Preconditions(
+                                            Precondition(
                                                 {DollarCharHostAttributes.MQTT_DISCOVERED}, False),
-                                            Preconditions({DollarCharHostAttributes.BROKER_MACHINE}, False)},
+                                            Precondition({DollarCharHostAttributes.BROKER_MACHINE}, False)},
                          {DollarCharHostAttributes.CRASHED})
-SCP_INST = AttackType(SCP_INST_NAME, {Preconditions({DollarCharHostAttributes.START_MACHINE}, True),
-                                      Preconditions({DollarCharHostAttributes.SSH_COMPROMISED}, False)},
+SCP_INST = AttackType(SCP_INST_NAME, {Precondition({DollarCharHostAttributes.START_MACHINE}, True),
+                                      Precondition({DollarCharHostAttributes.SSH_COMPROMISED}, False)},
                       {DollarCharHostAttributes.SCRIPTS_INSTALLED})
-UNDETERMINED = AttackType("undetermined", {Preconditions(
+UNDETERMINED = AttackType("undetermined", {Precondition(
     {DollarCharHostAttributes.START_MACHINE, DollarCharHostAttributes.SSH_COMPROMISED}, True)},
                           {DollarCharHostAttributes.SSH_DISCOVERED, DollarCharHostAttributes.MQTT_DISCOVERED,
                            DollarCharHostAttributes.SSH_COMPROMISED, DollarCharHostAttributes.CRASHED,
@@ -142,11 +146,10 @@ if __name__ == '__main__':
     flow_convertor = CAPTureFlowEventConvertor()
     metrics_calc = MetricsCalculator()
     mapper = AttackMapper(ATK_TYPES, args.type_threshold)
-    reconstructor = StarNetworkAttackGraphBasedScenarioReconstructor(HOSTS, {DollarCharHostAttributes.START_MACHINE},
-                                                                     ATK_TYPES, "../data/exploits.log",
-                                                                     "../data/flow_exploits.log", "../data/states.log",
-                                                                     "../data/correlations.log")
-    manager = ScenarioReconstructionManager(reconstructor, mapper, args.suspect_threshold, args.anomaly_threshold,
+    reconstructor = ScenarioReconstructor(HOSTS, {DollarCharHostAttributes.START_MACHINE},
+                                                                     ATK_TYPES,
+                                                                     "../data/flow_exploits.log", "../data/states.log")
+    manager = ReconstructionManager(reconstructor, mapper, args.suspect_threshold, args.anomaly_threshold,
                                             UNDETERMINED)
 
     tn_list = []
@@ -182,9 +185,9 @@ if __name__ == '__main__':
         print("reconstructing scenario from flow objects...")
         for flow in flows:
             manager.accept(flow)
-        p_steps, p_alerts = manager.get_results()
+        predicted_dag, p_alerts = manager.get_results()
         print("predicted exploits:")
-        print("\n".join([str(step) for step in p_steps]))
+        print("\n".join([str(step) for step in predicted_dag.steps]))
         print("predicted alerts:")
         print("\n".join([str(alert) for alert in p_alerts[-20:]]))
         print("predicted false negatives")
@@ -208,8 +211,7 @@ if __name__ == '__main__':
             p_alerts, alerts, UNDETERMINED))
         alert_precision_list.append(metrics_calc.get_alert_precision(
             p_alerts, alerts, UNDETERMINED))
-        actual_dag = AttackScenarioDAG(steps)
-        predicted_dag = AttackScenarioDAG(p_steps)
+        actual_dag = AttackScenarioDAG(steps, tracked_host_ips=reconstructor.host_dict)
         step_soundness, step_completeness = metrics_calc.get_step_soundness_completeness(
             predicted_dag, actual_dag, p_alerts, alerts, UNDETERMINED)
         step_soundness_list.append(step_soundness)
@@ -224,7 +226,7 @@ if __name__ == '__main__':
         scenario_completeness_list.append(scenario_completeness)
         if fn_r > fn:
             false_negative_scenarios_actual.append(steps)
-            false_negative_scenarios_predicted.append(p_steps)
+            false_negative_scenarios_predicted.append(predicted_dag.steps)
         manager.reset(initial_attributes)
 
     with open(args.log, "w") as f:

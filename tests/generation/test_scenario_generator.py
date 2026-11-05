@@ -1,10 +1,12 @@
-from tests.regression_support import RegressionCase
 from datetime import datetime, timedelta
-import pandas as pd
 import random
 
+import pandas as pd
 
-class TestScenarioGenerator(RegressionCase):
+from tests.support import ProjectTestCase
+
+
+class TestScenarioGenerator(ProjectTestCase):
 
     def setUp(self):
         super().setUp()

@@ -1,9 +1,8 @@
 from event_convertor.flow_event import FlowEvent
-from scenario_reconstructor.scenario_reconstructor import AttackType
+from scenario_reconstructor.models import AttackType
 
 
 class AttackMapper:
-
     def __init__(self, attack_types: list[AttackType], type_threshold: float):
         self.attack_dict = {
             attack.identifier: attack for attack in attack_types}

@@ -1,9 +1,11 @@
-import unittest
-from tests.regression_support import RegressionCase
-from event_convertor.flow_event import FlowEvent
 from datetime import datetime
+import unittest
 
-class TestFlowEventStringFunctions(RegressionCase):
+from event_convertor.flow_event import FlowEvent
+from tests.support import ProjectTestCase
+
+
+class TestFlowEventStringFunctions(ProjectTestCase):
 
     def test_flow_event_to_string_empty_attack_scores(self):
         flow_event = self.make_event(source_ip="192.168.1.1", source_port="8080", destination_ip="10.0.0.1",
@@ -44,7 +46,7 @@ class TestFlowEventStringFunctions(RegressionCase):
         self.assertEqual(flow_event.anomaly_score, 0.8)
         self.assertEqual(flow_event.attack_scores, {"attack_1": 0.8, "attack_2": 0.6})
 
-class TestFlowEventDictFunctions(RegressionCase):
+class TestFlowEventDictFunctions(ProjectTestCase):
 
     def test_flow_event_to_dict_attack_scores(self):
         flow_event = self.make_event(source_ip="192.168.1.1", source_port="8080", destination_ip="10.0.0.1",

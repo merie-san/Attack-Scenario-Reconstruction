@@ -1,10 +1,12 @@
-import unittest
-from tests.regression_support import RegressionCase
-from scenario_reconstructor.attack_mapper import AttackMapper
-from scenario_reconstructor.scenario_reconstructor import AttackType
 from datetime import datetime
+import unittest
 
-class TestMapper(RegressionCase):
+from scenario_reconstructor.attack_mapper import AttackMapper
+from scenario_reconstructor.models import AttackType
+from tests.support import ProjectTestCase
+
+
+class TestMapper(ProjectTestCase):
 
     def setUp(self) -> None:
         super().setUp()

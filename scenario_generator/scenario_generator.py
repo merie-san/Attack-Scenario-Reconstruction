@@ -1,7 +1,7 @@
 from collections.abc import Hashable
 from typing import Any, cast
 
-from scenario_reconstructor.reconstruction_manager import Exploit, FlowExploit, AttackType
+from scenario_reconstructor.models import AttackStep, FlowAlert, AttackType
 import random
 from datetime import timedelta, datetime
 import pandas as pd
@@ -160,7 +160,7 @@ class CAPTureScenarioGenerator:
         return possible_dsts_list, src_ip
 
     def export_results(self, attack_types: list[AttackType]) -> tuple[
-        list[Exploit], list[FlowExploit]]:
+        list[AttackStep], list[FlowAlert]]:
         attack_steps = []
         alerts = []
         attack_type_dict = {attack.identifier: attack for attack in attack_types}
@@ -173,11 +173,11 @@ class CAPTureScenarioGenerator:
             ift_std = self.ift_std[i]
             attack = attack_type_dict[attack_name]
             attack_steps.append(
-                Exploit(attack, size, src_ip, dst_ip, start_time, end_time, ift_mean, ift_std))
+                AttackStep(attack, size, src_ip, dst_ip, start_time, end_time, ift_mean, ift_std))
         alert_flows = self.result[self.result["label"] != "normal"]
         for row in alert_flows.itertuples():
             alerts.append(
-                FlowExploit(attack_type_dict[cast(str, row.label)], [], cast(str, row.src_ip), cast(str, row.src_port),
+                FlowAlert(attack_type_dict[cast(str, row.label)], [], cast(str, row.src_ip), cast(str, row.src_port),
                             cast(str, row.dst_ip), cast(str, row.dst_port), cast(str, row.protocol),
                             cast(datetime, row.timestamp), cast(datetime, row.timestamp) + timedelta(
                         milliseconds=cast(int, row.duration)), cast(float, row.anomaly_score)))

@@ -2,13 +2,13 @@
 
 import ast
 import contextlib
+from datetime import datetime, timedelta
 import io
 import os
 import runpy
 import subprocess
 import sys
 import textwrap
-from datetime import datetime, timedelta
 from unittest.mock import patch
 
 import numpy as np
@@ -16,12 +16,17 @@ import pandas as pd
 from sklearn.metrics import precision_recall_curve
 
 from event_convertor.flow_event_generator import CAPTureFlowEventConvertor
-from tests.regression_support import (
-    REPO_ROOT, SOURCE, TARGET, RegressionCase, notebook_cells, notebook_function,
+from tests.support import (
+    ProjectTestCase,
+    REPO_ROOT,
+    SOURCE,
+    TARGET,
+    notebook_cells,
+    notebook_function,
 )
 
 
-class TestGeneratorRegressions(RegressionCase):
+class TestGeneratorRegressions(ProjectTestCase):
     def test_B09_generated_step_ends_at_last_flow_end(self):
         generator = self.make_generator()
         generator.generate_scenario()
@@ -139,7 +144,7 @@ class TestGeneratorRegressions(RegressionCase):
                          'BUG-28: gapped index labels must not change the sampling fraction')
 
 
-class TestNotebookPreparationRegressions(RegressionCase):
+class TestNotebookPreparationRegressions(ProjectTestCase):
     def augmentation(self):
         namespace = {'np': np, 'pd': pd}
         for source in notebook_cells('attack_normal_merging.ipynb'):
@@ -239,7 +244,7 @@ class TestNotebookPreparationRegressions(RegressionCase):
         self.fail('Time conversion moved; replace this notebook audit with the extracted conversion function')
 
 
-class TestTrainingAndRunnerRegressions(RegressionCase):
+class TestTrainingAndRunnerRegressions(ProjectTestCase):
     def threshold_function(self, namespace):
         return notebook_function('reconstruction_dataset_creation.ipynb', 'compute_thresh', namespace)
 

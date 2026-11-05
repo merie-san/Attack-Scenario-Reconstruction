@@ -1,12 +1,12 @@
 """Isolated unittest lifecycle and reusable fixtures for the entire test suite."""
 
 import ast
+from datetime import datetime, timedelta, timezone
 import json
+from pathlib import Path
 import random
 import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -14,10 +14,15 @@ import pandas as pd
 from event_convertor.flow_event import FlowEvent
 from scenario_generator.scenario_generator import CAPTureScenarioGenerator
 from scenario_reconstructor.attack_mapper import AttackMapper
-from scenario_reconstructor.reconstruction_manager import ScenarioReconstructionManager
-from scenario_reconstructor.scenario_reconstructor import (
-    AttackType, Exploit, FlowExploit, Host, HostAttribute, Preconditions,
-    StarNetworkAttackGraphBasedScenarioReconstructor,
+from scenario_reconstructor.engine import ScenarioReconstructor
+from scenario_reconstructor.manager import ReconstructionManager
+from scenario_reconstructor.models import (
+    AttackStep,
+    AttackType,
+    FlowAlert,
+    Host,
+    HostAttribute,
+    Precondition,
 )
 
 
@@ -33,7 +38,7 @@ class Attribute(HostAttribute):
     COMPROMISED = 'compromised'
 
 
-class RegressionCase(unittest.TestCase):
+class ProjectTestCase(unittest.TestCase):
     """Give every test fresh fixtures, temporary logs, and reproducible randomness.
 
     Subclasses overriding setUp must call super().setUp(). Factory names use
@@ -52,7 +57,7 @@ class RegressionCase(unittest.TestCase):
         self.discover = AttackType('discover', set(), {Attribute.DISCOVERED})
         self.wrong = AttackType('wrong', set(), {Attribute.OTHER})
         self.finish = AttackType(
-            'finish', {Preconditions({Attribute.DISCOVERED}, False)},
+            'finish', {Precondition({Attribute.DISCOVERED}, False)},
             {Attribute.COMPROMISED},
         )
         self.unknown = AttackType('unknown', set(), set())
@@ -63,18 +68,19 @@ class RegressionCase(unittest.TestCase):
         return str(Path(self.temp.name) / name)
 
     def make_reconstructor(self, attacks=None, *, internal_hosts=None,
-                           external_host_attributes=None):
+                           external_host_attributes=None, max_idle_gap=timedelta(seconds=1)):
         paths = [self.log_path(name) for name in
-                 ('exploits.log', 'flow_exploits.log', 'states.log', 'correlations.log')]
-        return StarNetworkAttackGraphBasedScenarioReconstructor(
+                 ('flow_exploits.log', 'states.log')]
+        return ScenarioReconstructor(
             [Host(SOURCE), Host(TARGET)] if internal_hosts is None else internal_hosts,
             set() if external_host_attributes is None else external_host_attributes,
             self.types if attacks is None else attacks, *paths,
+            max_idle_gap=max_idle_gap,
         )
 
     def make_manager(self, *, reconstructor=None, mapper=None,
                      unknown_attack=None, **options):
-        return ScenarioReconstructionManager(
+        return ReconstructionManager(
             self.make_reconstructor() if reconstructor is None else reconstructor,
             AttackMapper(self.types, 0.1) if mapper is None else mapper,
             options.pop('suspect_threshold', 0.2),
@@ -93,7 +99,7 @@ class RegressionCase(unittest.TestCase):
             end_time=EPOCH + timedelta(seconds=second + duration), anomaly_score=0.5,
         )
         fields.update(overrides)
-        return FlowExploit(**fields)
+        return FlowAlert(**fields)
 
     def make_event(self, second=0, score=0.5, scores=None, duration=1, **overrides):
         fields = dict(
@@ -117,7 +123,7 @@ class RegressionCase(unittest.TestCase):
             mean_interflow_time=mean, std_interflow_time=std,
         )
         fields.update(overrides)
-        return Exploit(**fields)
+        return AttackStep(**fields)
 
     def make_scenario_frame(self, count=2, spacing_ms=1000, duration_ms=250):
         rows = [dict(
