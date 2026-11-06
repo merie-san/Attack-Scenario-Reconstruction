@@ -1,6 +1,6 @@
 """Map scored flow events to classified alerts."""
 
-from event_convertor.flow_event import FlowEvent
+from events.models import FlowEvent
 
 from .attack_mapper import AttackMapper
 from .models import AttackType, FlowAlert

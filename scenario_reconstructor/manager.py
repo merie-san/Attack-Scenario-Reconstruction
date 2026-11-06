@@ -4,7 +4,7 @@ from collections import Counter
 from collections.abc import Sequence
 from copy import copy, deepcopy
 
-from event_convertor.flow_event import FlowEvent
+from events.models import FlowEvent
 
 from .alerts import AlertFactory
 from .attack_mapper import AttackMapper

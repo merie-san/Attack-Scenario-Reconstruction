@@ -7,6 +7,12 @@ from typing import get_type_hints
 from metrics import MetricsCalculator
 from metrics.causal import causal_quality
 from metrics.occurrence import step_recall
+from events.models import FlowEvent
+from events.conversion import CaptureFlowEventConverter
+from event_convertor.flow_event import FlowEvent as LegacyFlowEvent
+from event_convertor.flow_event_generator import CAPTureFlowEventConvertor
+from scenario_generator import CAPTureScenarioGenerator, ScenarioGenerator
+from scenario_generator.scenario_generator import CAPTureScenarioGenerator as LegacyScenarioGenerator
 from scenario_generator.compute_metrics import MetricsCalculator as LegacyMetricsCalculator
 from scenario_reconstructor import models
 from scenario_reconstructor.alerts import AlertFactory
@@ -32,6 +38,10 @@ from tests.support import ProjectTestCase, REPO_ROOT
 class TestPublicApiCompatibility(ProjectTestCase):
     def test_legacy_class_names_are_identity_preserving_aliases(self):
         aliases = [
+            (LegacyFlowEvent, FlowEvent),
+            (CAPTureFlowEventConvertor, CaptureFlowEventConverter),
+            (CAPTureScenarioGenerator, ScenarioGenerator),
+            (LegacyScenarioGenerator, ScenarioGenerator),
             (FlowExploit, models.FlowAlert), (Exploit, models.AttackStep),
             (Preconditions, models.Precondition), (ExploitRequirement, models.RecoveryRequirement),
             (StarNetworkAttackGraphBasedScenarioReconstructor, ScenarioReconstructor),

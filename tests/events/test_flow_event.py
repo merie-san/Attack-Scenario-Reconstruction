@@ -1,7 +1,7 @@
 from datetime import datetime
 import unittest
 
-from event_convertor.flow_event import FlowEvent
+from events.models import FlowEvent
 from tests.support import ProjectTestCase
 
 

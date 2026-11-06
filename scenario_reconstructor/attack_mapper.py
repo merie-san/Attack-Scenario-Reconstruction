@@ -1,4 +1,4 @@
-from event_convertor.flow_event import FlowEvent
+from events.models import FlowEvent
 from scenario_reconstructor.models import AttackType
 
 

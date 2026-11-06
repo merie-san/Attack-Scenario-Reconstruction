@@ -3,11 +3,11 @@ from datetime import datetime, timedelta
 
 import pandas
 
-from event_convertor.flow_event_generator import CAPTureFlowEventConvertor
+from events.conversion import CaptureFlowEventConverter
 from scenario_reconstructor.attack_mapper import AttackMapper
 from scenario_reconstructor.dag import AttackScenarioDAG
 from scenario_reconstructor.models import AttackStep, FlowAlert
-from scenario_reconstructor.reconstruct_cAPTure import (
+from scenario_configs.capture import (
     ATK_TYPES,
     BRUTE_FORCE_MALFORMED,
     BRUTE_FORCE_MALFORMED_NAME,
@@ -313,7 +313,7 @@ class TestCaptureReconstruction(ProjectTestCase):
             ]}
         self.scenario_df = pandas.DataFrame(scenario_dict)
         self.scenario_df = self.scenario_df.sort_values(by="timestamp")
-        self.flow_convertor = CAPTureFlowEventConvertor()
+        self.flow_convertor = CaptureFlowEventConverter()
         self.mapper = AttackMapper(ATK_TYPES, 0)
         self.reconstructor = self.make_reconstructor(
             attacks=ATK_TYPES,

@@ -11,8 +11,8 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from event_convertor.flow_event import FlowEvent
-from scenario_generator.scenario_generator import CAPTureScenarioGenerator
+from events.models import FlowEvent
+from scenario_generator.generator import ScenarioGenerator
 from scenario_reconstructor.attack_mapper import AttackMapper
 from scenario_reconstructor.engine import ScenarioReconstructor
 from scenario_reconstructor.manager import ReconstructionManager
@@ -146,7 +146,7 @@ class ProjectTestCase(unittest.TestCase):
             final_atk='discover', enabling_atks=[],
         )
         config.update(options)
-        return CAPTureScenarioGenerator(**config)
+        return ScenarioGenerator(**config)
 
 
 def notebook_cells(filename):

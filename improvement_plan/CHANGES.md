@@ -1,5 +1,169 @@
 # Major changes since last version
 
+## Remaining codebase organization — 2026-11-06
+
+This refactor separates reusable logic from dataset configuration, notebook
+orchestration, and executable runners. The bug fixes documented below remain in
+effect. **Causal metrics, reconstruction policies, generation search bounds,
+timing/aggregation behavior, and text record formats retain their existing meaning.**
+
+### Modules and names
+
+| Previous location/name | Canonical location/name |
+| --- | --- |
+| `scenario_generator.scenario_generator.CAPTureScenarioGenerator` | `scenario_generator.generator.ScenarioGenerator` (also exported by the package) |
+| Validation inside the generator | `scenario_generator.validation.validate_templates` |
+| Search/backtracking inside the generator | `scenario_generator.search.GenerationRules` and `ScenarioSearch` |
+| Template placement inside the generator | `scenario_generator.rendering.render_scenario` and `RenderedScenario` |
+| `event_convertor.flow_event.FlowEvent` | `events.models.FlowEvent` (also exported by `events`) |
+| `event_convertor.flow_event_generator.CAPTureFlowEventConvertor` | `events.conversion.CaptureFlowEventConverter` |
+| Attack/host constants inside `reconstruct_cAPTure.py` | `scenario_configs.capture`, including `create_hosts()` |
+| Evaluation script body inside `reconstruct_cAPTure.py` | `experiments.capture.main(argv=None)` |
+| Batch script body inside `run_scripts.py` | `experiments.batch.build_jobs()` and `main()` |
+| Notebook augmentation, IPv4 filtering, and time helpers | `preprocessing.augmentation`, `.network`, and `.time` |
+| Notebook schema alignment, encoding, validation split, and thresholds | `preprocessing.training` |
+
+Legacy generator/event class names remain identity-preserving aliases. The old
+module paths, single-run CLI, batch script, and cAPTure configuration exports are
+retained. Internal callers and tests use the canonical imports. Shared flow fields
+and score-column definitions remove duplicated serialization/conversion code.
+
+### Observable behavior and preserved policies
+
+- **Importing `run_scripts` no longer launches evaluations.** Explicit script
+  execution or `main()` dispatches the same 48 valid dataset/threshold combinations
+  using the active Python interpreter. Named `EvaluationJob` records replace opaque
+  positional tuples, and job planning does not start subprocesses.
+- Each call to the evaluation entry point creates fresh host objects and attribute
+  sets. Legacy `HOSTS`, `BROKER`, and `initial_attributes` exports remain available;
+  a previous run cannot contaminate a new run through those shared host objects.
+- Generation still publishes the dataframe and metadata only after complete search
+  and rendering. Template validation, backtracking, exceptions, random sampling,
+  normal-flow sampling, and millisecond statistics retain the behavior below.
+- Notebook helper bodies now live in importable modules; notebook aliases and thin
+  wrappers preserve existing cell usage. Data paths, model-selection cells, plots,
+  the two-hour capture adjustment, and threshold/holdout policies are retained.
+  Notebook locations and the separate NFStream conversion workflow are unchanged.
+- Existing pipeline regression cases are relocated under `tests/generation`,
+  `tests/events`, `tests/preprocessing`, and `tests/experiments`. Reusable functions
+  are tested directly; focused notebook wiring checks remain. Compatibility,
+  import-side-effect, independent-host, and batch-plan coverage is included.
+- Real datasets, model-training notebooks, and pipeline reintegration are not run
+  as part of this structural change.
+- Verification: **280 tests and 374 subtests pass**. This includes all previous
+  regression cases, compatibility aliases, runner import checks, notebook helper
+  wiring, and syntax parsing of every code cell in all five notebooks. Batch
+  subprocesses are mocked. `git diff --check` reports no whitespace errors.
+
+## Notebook preparation, training, and runner corrections — 2026-11-06
+
+- **B22:** Numeric perturbation preserves nonnegative source fields. Bytes/packet
+  counters retain structural zeros and positive integral counts; bidirectional byte
+  and packet totals are recomputed from the directional values when present.
+- **B23:** Related categorical columns are sampled as whole rows and assigned by
+  position. Application/category combinations remain observed combinations, and
+  filtered dataframe indexes no longer create missing category assignments.
+- **B24:** Attack and normal train/test filtering parses both endpoints with
+  `ipaddress`, retaining IPv4 addresses and rejecting IPv6/invalid addresses.
+- **B25:** Every first/last-seen column uses the same removed input origin, compression
+  factor, and per-flow jitter. Directional timestamps remain within their flow
+  interval, absent directions retain zero timestamps, and durations are recomputed.
+  Zero-origin observed flows are distinguished from absent directions. Appended
+  normal blocks anchor to the previous maximum end. The existing two-hour capture
+  correction now uses `timedelta`, preserving date rollover in all three notebooks.
+- **B26:** Training defines the feature schema and class set; evaluation data no
+  longer removes training columns or classes. Missing required evaluation columns
+  raise a descriptive error. The existing known-class test filtering is retained.
+  Threshold calibration uses a reproducible 20% binary-stratified validation partition
+  of training data (`random_state=42`), with categories and scaler fitted on the fit
+  partition. Final test rows remain for evaluation/export only. Threshold selection
+  returns a value, handles zero recall without an index error, and honors strict `>`
+  comparisons including tied positive scores.
+- **B29:** Batch commands use `[sys.executable, ...]` and `subprocess.run()` instead
+  of a shell string beginning with `python3`. Paths with spaces remain single arguments,
+  and child failures retain the existing reporting behavior.
+- Notebook code was checked on small fixtures; real datasets, training runs, and
+  reconstructor reintegration remain deferred. Stored notebook outputs and execution
+  counts were cleared because they describe the previous code and learned models.
+- Verification after these corrections: **272 tests and 91 subtests pass**, including
+  the former pipeline regressions. No notebook dataset-loading or training cells were
+  executed against real data, and batch-runner tests mocked every subprocess.
+
+## B11: UTC flow-event ingestion — 2026-11-06
+
+- `CAPTureFlowEventConvertor.convert()` now parses timestamps with `utc=True`.
+  Naive inputs represent UTC; inputs with explicit offsets retain their instant
+  while converting to UTC. Both event start and duration-derived end are UTC-aware.
+- This removes the naive/aware mismatch with aggregated reconstruction steps and
+  direct interval comparisons in metrics. Flow duration remains in milliseconds.
+- Conversion operates on a private dataframe copy, preserving caller values and
+  dtypes even if a later field conversion fails. `FlowEvent` serialization and
+  manually constructed event objects retain their existing behavior.
+
+## Template validation and nonnegative gaps — 2026-11-06
+
+- Inter-step gaps are now `round(abs(Normal(10, 2)))` seconds. A negative draw
+  produces a positive delay instead of shifting the following step backward.
+  Zero gaps remain allowed. Placement is still relative to the preceding step's
+  last flow start; this does not impose finish-before-start or forbid flow overlap.
+- Generator construction validates the core template columns `timestamp`,
+  `duration`, `label`, and `step_number`. It rejects empty data, duplicate column
+  names, missing group identifiers, invalid/missing timestamps, nonnumeric,
+  nonfinite, negative, boolean or complex durations, and unrepresentable flow ends.
+  Template failures raise `ScenarioGenerationError` with a descriptive message.
+- Timestamp conversion and numeric-duration normalization operate on a private
+  dataframe copy. Caller-owned values and dtypes remain unchanged on both success
+  and validation failure; later edits to the caller's timestamp column do not
+  change the stored templates.
+- Generator timezone interpretation is retained; subsequent event-converter UTC
+  normalization (B11) is described above. Validation runs in the constructor, so callers
+  handling template failures should include construction in their error handling.
+
+## Bounded scenario search and caller-visible failures — 2026-11-06
+
+- **B27 retry loops:** generation builds feasible next-attack/source/destination
+  choices before sampling. Source/destination inequality, destination restrictions,
+  available attack templates, and the existing final-attack enabling constraint are
+  applied before selection. Impossible choices no longer cause blind resampling.
+- A randomized, iterative backtracking search restores enabled source/destination
+  lists and the provisional path when an earlier choice leads to a dead end. It
+  tries remaining alternatives without leaking hosts enabled by discarded branches.
+- `generate_scenario()` accepts keyword-only `max_steps=100` and
+  `max_search_attempts=10_000`. Repetitions remain allowed. An allowed `end` completes
+  the scenario, including at the step limit; a limit never yields partial success.
+- Public `ScenarioGenerationError` subclasses let the caller distinguish
+  `NoFeasibleScenarioError` (alternatives exhausted) from `ScenarioSearchLimitError`
+  (bounded search stopped without proving impossibility). The limit error exposes
+  `limit_name`, `limit`, and `attempts`. Attempts count selected host-pair actions,
+  terminal transitions, and depth-pruned actions.
+- Normal-flow template absence raises the base generation error; invalid numeric
+  arguments raise `TypeError`/`ValueError`. The last completed dataframe and export
+  metadata are only replaced after a successful generation request.
+- Caller retry/skip/abort policy remains outside the generator. Hierarchical sampling
+  is retained, but filtering and backtracking do not imply uniform sampling over all
+  complete scenarios. Subsequent B11 ingestion changes are described above; runner
+  reintegration remains deferred.
+
+## Simple scenario-generation corrections — 2026-11-06
+
+- **B09:** Ground-truth step end time is the maximum of all constituent flow end
+  times, including flow durations. A long earlier flow can determine the step end;
+  singleton steps also retain their full duration.
+- **B27, duplicate enabling:** Re-enabling a source or destination host does not
+  append another copy to the corresponding candidate list. This prevents repeated
+  enabling from silently increasing that host's sampling weight.
+- **B28:** Normal-flow subsampling uses row positions (`iloc[::divisor]`), so gapped
+  or nonnumeric dataframe index labels do not change the selected fraction. The
+  divisor must be a positive integer.
+- Selected attack templates are ordered by flow start before alignment and inter-flow
+  statistics. The first step is anchored to the earliest normal-flow timestamp.
+  At this stage the inter-step placement and random-gap policy were retained;
+  the subsequent nonnegative-gap correction is described above.
+
+The subsequent bounded-search change above addresses impossible-destination retry
+loops. B11 was addressed subsequently as described above. Notebook preparation/training
+and runner integration are outside these corrections.
+
 This document describes **functional differences first**, followed by code organization.
 The comparison baseline is the implementation in commit `071c453`, before the current
 reconstruction corrections and refactoring series. That version already provided the
@@ -231,9 +395,9 @@ The focused verification command is:
 .\.venv\Scripts\python.exe -m pytest tests --ignore=tests/pipeline -q
 ```
 
-Deferred pipeline failures remain tracked in `tests/pipeline/test_regressions.py`;
-this reorganization does not address their generation, preprocessing, or training issues.
-The full-suite audit after extraction reported **218 passing tests and the same 18
+At the refactor checkpoint, pipeline failures were deferred in
+`tests/pipeline/test_regressions.py`; subsequent generation and notebook corrections
+are documented above. The audit at that checkpoint reported **218 passing tests and 18
 deferred pipeline failures**, with **54 passing subtests** and no collection warnings.
 All 211 pre-refactor tests outside the deferred pipeline were retained; five new
 checks cover public compatibility and standalone aggregation across contexts.

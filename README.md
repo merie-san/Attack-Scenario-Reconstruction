@@ -19,7 +19,81 @@ At the end of the reconstruction procedure a sequence of attack steps is obtaine
 
 For more detailed information on the structure and the configuration of the various modules see the thesis in question.  
 
+### Scenario generation failures and bounded backtracking
+
+Construction validates the core template fields (`timestamp`, `duration`, `label`,
+and `step_number`) on a private dataframe copy. Timestamps must be valid and present,
+durations must be finite nonnegative numbers in milliseconds, group identifiers must
+be present, and column names must be unique. Empty or invalid templates raise
+`ScenarioGenerationError`; include construction in the `try` block when handling
+these failures. Timestamp conversion and numeric-duration normalization do not change
+the caller's dataframe. Existing timezone interpretation is retained.
+
+Inter-step delays use the absolute value of the normal draw before rounding to
+seconds. Negative draws become positive delays; zero remains allowed. Steps are
+still placed relative to the preceding step's last flow start and may overlap its
+flow durations.
+
+`generate_scenario()` filters infeasible transitions and host pairs before sampling
+and backtracks when a valid local choice leads to a dead end. Candidate hosts and
+enabled-host lists are restored for each alternative. Sampling follows attack,
+then source, then destination among remaining feasible choices; completed scenarios
+are not guaranteed to be uniformly distributed.
+
+Keyword-only limits are `max_steps=100` and `max_search_attempts=10_000`. The step
+limit counts attack executions; attempts count tested attack/source/destination
+choices and `end` transitions, including choices rejected at the depth boundary.
+Repetition is allowed within these bounds. Only a configured `end` transition
+completes a scenario; reaching a limit never returns a truncated scenario.
+
+Callers can distinguish exhausted choices from incomplete bounded search:
+
+```python
+from scenario_generator import (
+    NoFeasibleScenarioError,
+    ScenarioGenerationError,
+    ScenarioSearchLimitError,
+)
+
+try:
+    scenario_df = generator.generate_scenario(max_steps=100, max_search_attempts=10_000)
+except NoFeasibleScenarioError as error:
+    # Reject this request: the available alternatives were exhausted.
+    print(error)
+except ScenarioSearchLimitError as error:
+    # Retry with different bounds/seed, skip, or stop according to caller policy.
+    print(error.limit_name, error.limit, error.attempts)
+except ScenarioGenerationError as error:
+    # Other explicit generation failures, such as missing normal-flow templates.
+    print(error)
+else:
+    steps, alerts = generator.export_results(attack_types)
+```
+
+All three failures inherit from `RuntimeError`. Invalid argument types or nonpositive
+limits raise `TypeError`/`ValueError`. An exception preserves the last completed
+`result` and exported metadata; callers should process a new result only on success.
+
+### Flow-event timestamp conversion
+
+`events.conversion.CaptureFlowEventConverter.convert()` produces UTC-aware start and end timestamps.
+Naive input timestamps are interpreted as UTC; explicit timezone offsets are
+converted while preserving the instant. Durations remain milliseconds. The
+converter works on a private copy and leaves the input dataframe unchanged.
+
 ### Code organization
+
+Reusable code is organized by responsibility:
+
+| Package | Responsibility |
+| --- | --- |
+| `events` | Scored flow model and cAPTure dataframe conversion |
+| `scenario_generator` | Template validation, bounded search, temporal rendering, and generation API |
+| `scenario_configs` | Dataset-specific attack rules and fresh host initialization |
+| `preprocessing` | Flow augmentation, endpoint filtering, timestamps, training schema/encoding, and calibration |
+| `scenario_reconstructor` | State validation, recovery, aggregation, storage, and causal DAGs |
+| `metrics` | Detection, alert/step matching, aggregation, and causal evaluation |
+| `experiments` | Explicit single-run and batch evaluation entry points |
 
 Reconstruction models live in `scenario_reconstructor/models`; causal graphs are
 in `scenario_reconstructor/dag.py`. `engine.py` handles network-state validation,
@@ -29,17 +103,48 @@ Metrics live in the independent `metrics` package, split into detection,
 aggregation, occurrence, and causal evaluation. `metrics.MetricsCalculator`
 preserves the established class API.
 
-New code should use `FlowAlert`, `AttackStep`, `Precondition`,
+New code should use `ScenarioGenerator` from `scenario_generator`,
+`CaptureFlowEventConverter` from `events.conversion`, `FlowEvent` from `events`,
+and `FlowAlert`, `AttackStep`, `Precondition`,
 `RecoveryRequirement`, `ScenarioReconstructor`, and `ReconstructionManager` from
 their canonical modules. The former names and module paths remain compatibility
 aliases, and existing text log formats are unchanged. See
 [`improvement_plan/CHANGES.md`](improvement_plan/CHANGES.md) for the layout and name mapping.
 
-Tests are grouped under `tests/models`, `tests/graph`, `tests/reconstruction`,
-`tests/metrics`, and `tests/integration`, with shared factories in `tests/support.py`.
-Run the reconstruction and evaluation checks with
-`python -m pytest tests --ignore=tests/pipeline -q`; the pipeline directory retains
-the separately deferred data-preparation and training regressions.
+Tests mirror these responsibilities under `tests/models`, `tests/events`,
+`tests/generation`, `tests/graph`, `tests/reconstruction`, `tests/metrics`,
+`tests/preprocessing`, `tests/experiments`, and `tests/integration`, with shared
+factories in `tests/support.py`. Run all checks with `python -m pytest tests -q`.
+Preprocessing tests call reusable functions directly and exercise selected notebook
+wrappers/setup cells on small fixtures. Batch subprocesses are mocked; tests do not
+load real datasets or run model-training notebooks.
+
+The notebooks stay under `jupyter notebook/` to preserve their relative data paths;
+they import reusable preprocessing logic from the project root. The PCAP conversion
+notebook retains its NFStream workflow. Plotting, model comparisons, and dataset
+selection remain explicit notebook steps.
+
+Canonical command entry points are `python -m experiments.capture` and
+`python -m experiments.batch`. Existing `python -m scenario_reconstructor.reconstruct_cAPTure`
+and `python run_scripts.py` commands still work. Importing a runner never starts
+evaluations; its `main()` must be called explicitly. Real-dataset execution and
+pipeline reintegration remain deferred.
+
+### Notebook corrections and validation
+
+Normal-flow augmentation keeps categorical tuples together, constrains nonnegative
+counters, recomputes directional totals/durations, and transforms related timestamps
+together. IPv4 filtering validates both endpoints. Capture-time shifts use date-safe
+arithmetic.
+
+The reconstruction-dataset notebook uses training-defined features/classes and holds
+out 20% of its binary training data for threshold calibration (stratified, seed 42).
+Encoding categories and the scaler are learned from the fit partition; final test
+data is used for evaluation/export. Recall-based thresholds respect the strict `>`
+comparison, including zero-recall and tied-score cases.
+
+Notebook outputs were cleared after these changes. Regenerate data and learned results
+before using them; real-dataset runs and pipeline reintegration are scheduled separately.
 
 ### Alert logging, cleanup, and aggregation
 
