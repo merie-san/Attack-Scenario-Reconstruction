@@ -124,11 +124,25 @@ they import reusable preprocessing logic from the project root. The PCAP convers
 notebook retains its NFStream workflow. Plotting, model comparisons, and dataset
 selection remain explicit notebook steps.
 
-Canonical command entry points are `python -m experiments.capture` and
-`python -m experiments.batch`. Existing `python -m scenario_reconstructor.reconstruct_cAPTure`
-and `python run_scripts.py` commands still work. Importing a runner never starts
-evaluations; its `main()` must be called explicitly. Real-dataset execution and
-pipeline reintegration remain deferred.
+Generate a scored scenario and reconstruct it with the standalone CLIs:
+
+```shell
+python -m scenario_generator -f templates.csv -o output/scenario.csv --steps-output output/actual_steps.txt --alerts-output output/actual_alerts.txt --seed 42
+python -m scenario_reconstructor -f output/scenario.csv -o output/predicted_steps.txt --alerts-output output/predicted_alerts.txt
+python -m experiments.capture -f templates.csv -t 2 -l output/metrics.txt --seed 42 --quiet
+```
+
+Generation supports `--normal-divisor`, `--max-steps`, `--max-search-attempts`, and
+`--max-generation-retries` (additional attempts after the initial search).
+Reconstruction supports classification thresholds, `--max-idle-gap` in seconds,
+archive paths and logging thresholds, and `--suspect-max-length`. Evaluation accepts
+both sets of options plus `--edge-recovery-threshold` and reports the mean scenario
+detection rate. Use `--help` for all options and `--quiet` to suppress stdout.
+
+Batch evaluations use `python -m experiments.batch`. Existing
+`python -m scenario_reconstructor.reconstruct_cAPTure` and `python run_scripts.py`
+commands still work. Importing a runner never starts evaluations; its `main()` must
+be called explicitly. Real-dataset execution and pipeline reintegration remain deferred.
 
 ### Notebook corrections and validation
 

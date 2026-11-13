@@ -1,6 +1,10 @@
 import pandas as pd
 
 from metrics import MetricsCalculator
+from events.conversion import CAPTURE_ATTACK_SCORE_COLUMNS, CaptureFlowEventConverter
+from scenario_configs.capture import ATK_TYPES, UNDETERMINED as CAPTURE_UNKNOWN
+from scenario_reconstructor.alerts import AlertFactory
+from scenario_reconstructor.attack_mapper import AttackMapper
 from tests.metrics.fixtures import MetricsFixture, UNDETERMINED
 from tests.support import ProjectTestCase
 
@@ -43,6 +47,22 @@ class TestDetectionMetrics(MetricsFixture):
 
 
 class TestDetectionRegressions(ProjectTestCase):
+    def test_naive_timestamps_match_alerts_from_utc_flow_conversion(self):
+        frame = self.make_scenario_frame()
+        frame['timestamp'] = frame['timestamp'].dt.tz_localize(None)
+        frame.loc[frame['label'] != 'normal', 'label'] = ATK_TYPES[0].identifier
+        for column in CAPTURE_ATTACK_SCORE_COLUMNS:
+            frame[column] = (frame['label'] == column).astype(float)
+        factory = AlertFactory(AttackMapper(ATK_TYPES, 0.2), 0.4, CAPTURE_UNKNOWN)
+        alerts = [factory.from_event(event) for event in CaptureFlowEventConverter().convert(frame)
+                  if event.anomaly_score > 0.8]
+        self.assertIsNone(frame.iloc[0].timestamp.tzinfo)
+        self.assertIsNotNone(alerts[0].start_time.tzinfo)
+        self.assertEqual(
+            MetricsCalculator.get_reconstruction_confusion_matrix(frame, alerts),
+            (1, 0, 0, 2),
+        )
+
     def test_B20_detection_confusion_matrix_accepts_single_class(self):
         self.assertEqual(
             MetricsCalculator.get_detection_confusion_matrix(

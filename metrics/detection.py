@@ -7,6 +7,7 @@ import pandas as pd
 from sklearn.metrics import confusion_matrix
 
 from scenario_reconstructor.models import AttackType, FlowAlert
+from scenario_reconstructor.time_utils import normalize_timestamp
 
 from .matching import match_alerts
 
@@ -25,18 +26,7 @@ def reconstruction_confusion_matrix(
     scenario_df: pd.DataFrame,
     predicted_alerts: list[FlowAlert],
 ) -> tuple[int, int, int, int]:
-    predicted_flows = {
-        (
-            alert.source_ip,
-            alert.source_port,
-            alert.destination_ip,
-            alert.destination_port,
-            alert.protocol,
-            alert.start_time,
-            alert.end_time,
-        )
-        for alert in predicted_alerts
-    }
+    predicted_flows = {alert.metric_key for alert in predicted_alerts}
 
     values = []
     for row in scenario_df.itertuples(index=False):
@@ -48,8 +38,8 @@ def reconstruction_confusion_matrix(
             row.dst_ip,
             row.dst_port,
             row.protocol,
-            timestamp,
-            timestamp + timedelta(milliseconds=duration),
+            normalize_timestamp(timestamp),
+            normalize_timestamp(timestamp + timedelta(milliseconds=duration)),
         )
         values.append(int(key in predicted_flows))
 

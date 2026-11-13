@@ -5,6 +5,7 @@ from itertools import combinations_with_replacement
 
 from scenario_reconstructor.dag import AttackScenarioDAG
 from scenario_reconstructor.models import AttackStep, AttackType, FlowAlert
+from scenario_reconstructor.time_utils import normalize_timestamp
 
 from .matching import ensure_steps, match_alerts
 
@@ -14,7 +15,7 @@ def build_aggregation_pairs(
 ) -> set[tuple[int, int]]:
     pairs: set[tuple[int, int]] = set()
     for alerts in alerts_by_step.values():
-        alerts = sorted(alerts, key=lambda x: x[1].start_time)
+        alerts = sorted(alerts, key=lambda x: normalize_timestamp(x[1].start_time))
         alert_ids = [alert_id for alert_id, _ in alerts]
         for a_id, b_id in combinations_with_replacement(alert_ids, 2):
             pairs.add((a_id, b_id))
@@ -41,7 +42,8 @@ def aggregation_pairs(
         step: [
             (a_idx, a)
             for a_idx, a in actual_matches_by_group[step.get_exploit_group_id()]
-            if step.start_time <= a.start_time <= step.end_time
+            if (normalize_timestamp(step.start_time) <= normalize_timestamp(a.start_time)
+                <= normalize_timestamp(step.end_time))
         ]
         for step in actual_steps
     }
@@ -49,7 +51,8 @@ def aggregation_pairs(
         step: [
             (alert_id, p_a)
             for alert_id, p_a in predicted_matches_by_group[step.get_exploit_group_id()]
-            if step.start_time <= p_a.start_time <= step.end_time
+            if (normalize_timestamp(step.start_time) <= normalize_timestamp(p_a.start_time)
+                <= normalize_timestamp(step.end_time))
         ]
         for step in predicted_steps
     }

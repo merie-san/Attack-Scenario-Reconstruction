@@ -1,4 +1,8 @@
+from datetime import timedelta
+
 from metrics import MetricsCalculator
+from scenario_reconstructor.aggregation import aggregate_alerts
+from scenario_reconstructor.dag import AttackScenarioDAG
 from tests.metrics.fixtures import MetricsFixture, UNDETERMINED
 from tests.support import ProjectTestCase
 
@@ -22,6 +26,28 @@ class TestAggregationMetrics(MetricsFixture):
 
 
 class TestAggregationRegressions(ProjectTestCase):
+    def test_mixed_timestamp_alerts_match_utc_aggregated_and_naive_steps(self):
+        aware_alerts = [self.make_flow(i) for i in range(3)]
+        mixed_alerts = [
+            self.make_flow(i, start_time=alert.start_time.replace(tzinfo=None),
+                           end_time=alert.end_time.replace(tzinfo=None)) if i % 2 == 0 else alert
+            for i, alert in enumerate(aware_alerts)
+        ]
+        steps = aggregate_alerts(mixed_alerts, timedelta(seconds=1))
+        self.assertIsNotNone(steps[0].start_time.tzinfo)
+        naive_step = self.make_step(
+            duration=3, size=3, start_time=steps[0].start_time.replace(tzinfo=None),
+            end_time=steps[0].end_time.replace(tzinfo=None),
+        )
+        for predicted, actual in ((steps, [naive_step]), ([naive_step], steps)):
+            with self.subTest(predicted=predicted):
+                self.assertEqual(
+                    MetricsCalculator.get_step_soundness_completeness(
+                        AttackScenarioDAG(predicted), AttackScenarioDAG(actual),
+                        mixed_alerts, aware_alerts,
+                    ), (1.0, 1.0),
+                )
+
     def test_B02_aggregation_completeness_is_orthogonal_to_missing_alerts(self):
         actual_alerts = [self.make_flow(i) for i in range(3)]
         soundness, completeness = MetricsCalculator.get_step_soundness_completeness(
