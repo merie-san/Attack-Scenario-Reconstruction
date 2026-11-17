@@ -1,6 +1,6 @@
 """Public scenario generation API coordinating validation, search, and rendering."""
 import random
-from collections.abc import Hashable
+from collections.abc import Hashable, Sequence
 from datetime import datetime, timedelta
 from numbers import Integral
 from typing import cast
@@ -53,8 +53,9 @@ class ScenarioGenerator:
         return ScenarioSearch(rules, set(self.data_source)).find_path(max_steps, max_search_attempts)
 
     def generate_scenario(self, normal_flow_number_divisor: int = 1, *,
-                          max_steps: int = 100, max_search_attempts: int = 10_000) -> pd.DataFrame:
-        """Generate a complete scenario or raise a typed failure, preserving the last result."""
+                          max_steps: int = 100, max_search_attempts: int = 10_000,
+                          path: Sequence[tuple[str, str, str]] | None = None) -> pd.DataFrame:
+        """Render an explicit path or search for one, preserving the last result on failure."""
         if not isinstance(normal_flow_number_divisor, Integral):
             raise TypeError("normal_flow_number_divisor must be an integer")
         if normal_flow_number_divisor <= 0:
@@ -66,7 +67,25 @@ class ScenarioGenerator:
                 raise ValueError(f"{name} must be positive")
         if "normal" not in self.data_source or -1 not in self.data_source["normal"]:
             raise ScenarioGenerationError("The dataset must contain normal flows with step_number=-1")
-        path = self._search_scenario(max_steps, max_search_attempts)
+        if path is None:
+            path = self._search_scenario(max_steps, max_search_attempts)
+        else:
+            if isinstance(path, (str, bytes)) or not isinstance(path, Sequence):
+                raise TypeError("Explicit scenario path must be a sequence of steps")
+            normalized = []
+            for step in path:
+                if (isinstance(step, (str, bytes)) or not isinstance(step, Sequence)
+                        or len(step) != 3 or not all(isinstance(item, str) and item.strip() for item in step)):
+                    raise ValueError("Each scenario step must contain three non-empty strings: attack, src_ip, dst_ip")
+                attack_name, src_ip, dst_ip = (item.strip() for item in step)
+                if src_ip == dst_ip:
+                    raise ScenarioGenerationError("Scenario step source and destination IPs must differ")
+                if attack_name == "normal" or attack_name not in self.data_source:
+                    raise ScenarioGenerationError(f"Unknown or unavailable attack type in path: {attack_name}")
+                normalized.append((attack_name, src_ip, dst_ip))
+            if not normalized:
+                raise ScenarioGenerationError("Explicit scenario path must contain at least one step")
+            path = normalized
         rendered = render_scenario(path, self.data_source, normal_flow_number_divisor)
         self._publish_result(rendered)
         return self.result

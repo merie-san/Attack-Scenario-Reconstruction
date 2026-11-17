@@ -1,5 +1,20 @@
 # Major changes since last version
 
+## Batch aggregation excludes failed jobs — 2026-11-17
+
+- Previously, the batch runner aggregated files for every planned job, so a failed
+  evaluation could contribute stale CSVs from an earlier run or partially replaced
+  outputs. It now aggregates only jobs that exit successfully in the current batch.
+  Other jobs continue to run and failures remain visible even with `--quiet`.
+- The previous `batch_summary.csv` and `batch_iterations.csv` are removed before
+  dispatch. An all-failed batch leaves no misleading old combined reports. Individual
+  job outputs remain available for diagnosis; no new results directory is created
+  when there are no outputs.
+- The standalone reporting rebuild retains its file-discovery behavior and requires
+  a curated input directory; it has no batch execution status information.
+- Regression coverage includes mixed successful/failed jobs, a partial write before
+  failure, reused results directories, and an all-failed batch. Subprocesses are mocked.
+
 ## Remaining codebase organization — 2026-11-06
 
 This refactor separates reusable logic from dataset configuration, notebook

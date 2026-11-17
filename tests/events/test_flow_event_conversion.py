@@ -54,6 +54,17 @@ class TestFlowEventConversion(ProjectTestCase):
         pd.testing.assert_frame_equal(frame, original)
         self.assertTrue(all(event.start_time.utcoffset() == timedelta(0) for event in events))
 
+    def test_custom_score_columns_accept_an_iterable_and_preserve_order(self):
+        frame = self.make_scenario_frame()
+        frame['custom-attack'] = 0.9
+        frame['other attack'] = 0.4
+        original = frame.copy(deep=True)
+        events = CaptureFlowEventConverter.convert(frame, iter(['other attack', 'custom-attack']))
+        pd.testing.assert_frame_equal(frame, original)
+        for event in events:
+            self.assertEqual(list(event.attack_scores), ['other attack', 'custom-attack'])
+            self.assertEqual(event.attack_scores, {'other attack': 0.4, 'custom-attack': 0.9})
+
     def test_later_conversion_error_does_not_leave_input_partially_converted(self):
         frame = self.frame().drop(columns='scp_inst')
         frame['timestamp'] = frame['timestamp'].astype(str)

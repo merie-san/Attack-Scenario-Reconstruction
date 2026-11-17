@@ -1,46 +1,46 @@
-"""cAPTure evaluation CLI; importing this module does not run experiments."""
+"""Run the cAPTure evaluation experiment on a scored/labeled cAPTure flow dataset CSV."""
 import argparse
 from datetime import timedelta
-from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from events.conversion import CaptureFlowEventConverter
+from experiments.reporting import IterationRecord, parse_dataset_metadata, write_evaluation_outputs
 from metrics import MetricsCalculator
 from scenario_generator import ScenarioGenerator
 from scenario_generator.cli import (
-    add_generation_arguments, generate_with_retries, seed_random_generators,
+    add_config_argument, add_generation_arguments, generate_with_retries,
+    load_config_argument, load_explicit_scenario_path, seed_random_generators,
     validate_generation_arguments, validate_input_file,
 )
 from scenario_reconstructor.attack_mapper import AttackMapper
 from scenario_reconstructor.cli import (
     add_reconstruction_arguments, prepare_log_directories, validate_reconstruction_arguments,
 )
-from scenario_reconstructor.dag import AttackGoal, AttackScenarioDAG
+from scenario_reconstructor.dag import AttackScenarioDAG
 from scenario_reconstructor.engine import ScenarioReconstructor
 from scenario_reconstructor.manager import ReconstructionManager
-from scenario_configs.capture import (
-    ATK_TYPES, DOLLAR_CHAR, DST_RESTRICTED_ATKS, ENABLE_ATKS, ENABLE_DST_FOR, ENABLE_SRC_FOR,
-    FINAL_ATK, NEXT_ATTACK_DICT, POSSIBLE_DSTS, POSSIBLE_SRCS, UNDETERMINED,
-    DollarCharHostAttributes, create_hosts,
-)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="reconstructScenario",
-                                     description="Reconstruct cAPTure scenarios and compute metrics using scenario_configs.capture")
-    parser.add_argument("-f", "--file", required=True, help="file name")
+                                     description="Run the cAPTure evaluation experiment (scenario generation, reconstruction, and metric collection) on a cAPTure-structured flow dataset CSV")
+    parser.add_argument("-f", "--file", required=True, help="path to input scored/labeled flow dataset CSV")
+    add_config_argument(parser)
     parser.add_argument(
         "-t", "--times", help="number of evaluation cycles", default=100, type=int)
     parser.add_argument(
         "-l", "--log", help="where to log results", default="./log.txt", type=str)
+    parser.add_argument("--iterations-csv", default=None, help="path to per-iteration CSV results")
+    parser.add_argument("--summary-csv", default=None, help="path to summary CSV results")
     add_generation_arguments(parser, normal_divisor=10)
     add_reconstruction_arguments(parser)
     parser.add_argument("--edge-recovery-threshold", type=float, default=0.8)
     args = parser.parse_args(argv)
     validate_generation_arguments(parser, args)
     validate_reconstruction_arguments(parser, args)
+    config = load_config_argument(args, parser)
+    explicit_path = load_explicit_scenario_path(args, parser)
     validate_input_file(parser, args.file)
     if args.times <= 0:
         parser.error("--times must be positive")
@@ -49,63 +49,47 @@ def main(argv=None):
     seed_random_generators(args.seed)
     reconstruction_df = pd.read_csv(args.file)
     generator = ScenarioGenerator(
-        reconstruction_df, NEXT_ATTACK_DICT, ENABLE_SRC_FOR, ENABLE_DST_FOR,
-        POSSIBLE_SRCS, POSSIBLE_DSTS, DST_RESTRICTED_ATKS, FINAL_ATK, ENABLE_ATKS,
+        reconstruction_df, config.next_attack_dict, config.enable_src_for, config.enable_dst_for,
+        config.possible_srcs, config.possible_dsts, config.dst_restricted_atks, config.final_atk, config.enable_atks,
     )
     flow_converter = CaptureFlowEventConverter()
     metrics_calc = MetricsCalculator()
-    mapper = AttackMapper(ATK_TYPES, args.type_threshold)
-    hosts = create_hosts()
+    mapper = AttackMapper(config.atk_types, args.type_threshold)
+    hosts = config.create_hosts()
     initial_attributes = {host: set(host.compromise_attributes) for host in hosts}
     prepare_log_directories(args)
     reconstructor = ScenarioReconstructor(
-        hosts, {DollarCharHostAttributes.START_MACHINE}, ATK_TYPES,
+        hosts, config.external_host_attributes, config.atk_types,
         args.flow_log_path, args.state_log_path,
         max_idle_gap=timedelta(seconds=args.max_idle_gap),
     )
     manager = ReconstructionManager(
-        reconstructor, mapper, args.suspect_threshold, args.anomaly_threshold, UNDETERMINED,
+        reconstructor, mapper, args.suspect_threshold, args.anomaly_threshold, config.undetermined,
         length_when_log_flow_exploits=args.log_flow_exploits_threshold,
         length_when_log_states=args.log_states_threshold,
         suspect_list_max_length=args.suspect_max_length,
     )
-    attack_goal = AttackGoal(attack_type=DOLLAR_CHAR, destination_ip="10.0.0.1")
+    attack_goal = config.attack_goal
 
     def verbose(*values):
         if not args.quiet:
             print(*values)
 
-    tn_list = []
-    fp_list = []
-    fn_list = []
-    tp_list = []
-    tnr_list = []
-    fpr_list = []
-    fnr_list = []
-    tpr_list = []
-    alert_recall_list = []
-    alert_precision_list = []
-    step_soundness_list = []
-    step_completeness_list = []
-    scenario_recall_list = []
-    scenario_precision_list = []
-    scenario_soundness_list = []
-    scenario_completeness_list = []
-    scenario_detected_list = []
+    records = []
     false_negative_scenarios_actual = []
     false_negative_scenarios_predicted = []
     verbose("starting to run the iterations...")
 
     for i in range(args.times):
         verbose("generating new scenario...")
-        scenario_df = generate_with_retries(generator, args)
-        steps, alerts = generator.export_results(ATK_TYPES)
+        scenario_df = generate_with_retries(generator, args, path=explicit_path)
+        steps, alerts = generator.export_results(config.atk_types)
         verbose("actual exploits:")
         verbose("\n".join([str(step) for step in steps]) + "")
         verbose("actual alerts:")
         verbose("\n".join([str(alert) for alert in alerts[-20:]]) + "")
         verbose("converting scenario in flow objects...")
-        flows = flow_converter.convert(scenario_df)
+        flows = flow_converter.convert(scenario_df, score_columns=config.score_columns)
         verbose("reconstructing scenario from flow objects...")
         for flow in flows:
             manager.accept(flow)
@@ -123,78 +107,46 @@ def main(argv=None):
             scenario_df, args.anomaly_threshold)
         tn_r, fp_r, fn_r, tp_r = metrics_calc.get_reconstruction_confusion_matrix(
             scenario_df, p_alerts)
-        tn_list.append(tn)
-        fp_list.append(fp)
-        fn_list.append(fn)
-        tp_list.append(tp)
-        tnr_list.append(tn_r)
-        fpr_list.append(fp_r)
-        fnr_list.append(fn_r)
-        tpr_list.append(tp_r)
-        alert_recall_list.append(metrics_calc.get_alert_recall(
-            p_alerts, alerts, UNDETERMINED))
-        alert_precision_list.append(metrics_calc.get_alert_precision(
-            p_alerts, alerts, UNDETERMINED))
         actual_dag = AttackScenarioDAG(steps, tracked_host_ips=reconstructor.host_dict)
-        scenario_detected_list.append(metrics_calc.is_scenario_detected(
-            predicted_dag, actual_dag, attack_goal, UNDETERMINED,
-            edge_recovery_threshold=args.edge_recovery_threshold,
-        ))
         step_soundness, step_completeness = metrics_calc.get_step_soundness_completeness(
-            predicted_dag, actual_dag, p_alerts, alerts, UNDETERMINED)
-        step_soundness_list.append(step_soundness)
-        step_completeness_list.append(step_completeness)
-        scenario_recall_list.append(metrics_calc.get_scenario_step_recall(
-            predicted_dag, actual_dag, UNDETERMINED))
-        scenario_precision_list.append(metrics_calc.get_scenario_step_precision(
-            predicted_dag, actual_dag, UNDETERMINED))
+            predicted_dag, actual_dag, p_alerts, alerts, config.undetermined)
         scenario_soundness, scenario_completeness = metrics_calc.get_scenario_soundness_completeness(
-            predicted_dag, actual_dag, UNDETERMINED)
-        scenario_soundness_list.append(scenario_soundness)
-        scenario_completeness_list.append(scenario_completeness)
+            predicted_dag, actual_dag, config.undetermined)
+        records.append(IterationRecord(
+            iteration=i, actual_steps=len(steps), predicted_steps=len(predicted_dag.steps),
+            actual_alerts=len(alerts), predicted_alerts=len(p_alerts),
+            recovered_fns=len(manager.get_fns()), rejected_fps=len(manager.get_fps()),
+            id_tn=tn, id_fp=fp, id_fn=fn, id_tp=tp,
+            rec_tn=tn_r, rec_fp=fp_r, rec_fn=fn_r, rec_tp=tp_r,
+            alert_precision=metrics_calc.get_alert_precision(p_alerts, alerts, config.undetermined),
+            alert_recall=metrics_calc.get_alert_recall(p_alerts, alerts, config.undetermined),
+            step_soundness=step_soundness, step_completeness=step_completeness,
+            scenario_step_precision=metrics_calc.get_scenario_step_precision(
+                predicted_dag, actual_dag, config.undetermined),
+            scenario_step_recall=metrics_calc.get_scenario_step_recall(
+                predicted_dag, actual_dag, config.undetermined),
+            scenario_soundness=scenario_soundness, scenario_completeness=scenario_completeness,
+            scenario_detected=int(metrics_calc.is_scenario_detected(
+                predicted_dag, actual_dag, attack_goal, config.undetermined,
+                edge_recovery_threshold=args.edge_recovery_threshold)),
+        ))
         if fn_r > fn:
             false_negative_scenarios_actual.append(steps)
             false_negative_scenarios_predicted.append(predicted_dag.steps)
         manager.reset(initial_attributes)
 
-    Path(args.log).parent.mkdir(parents=True, exist_ok=True)
-    with open(args.log, "w") as f:
-
-        f.write(
-            f"mean ID true negatives: {float(np.mean(tn_list))}, mean REC true negatives: {float(np.mean(tnr_list))}\n")
-        f.write(
-            f"mean ID false positives: {float(np.mean(fp_list))}, mean REC false positives: {float(np.mean(fpr_list))}\n")
-        f.write(
-            f"mean ID false negatives: {float(np.mean(fn_list))}, mean REC false negatives: {float(np.mean(fnr_list))}\n")
-        f.write(
-            f"mean ID true positives: {float(np.mean(tp_list))}, mean REC true positives: {float(np.mean(tpr_list))}\n")
-
-        f.write(
-            f"mean precision of reconstructed alerts: {float(np.mean(alert_precision_list))}\n")
-        f.write(
-            f"mean recall of reconstructed alerts: {float(np.mean(alert_recall_list))}\n")
-        f.write(
-            f"mean soundness of reconstructed steps: {float(np.mean(step_soundness_list))}\n")
-        f.write(
-            f"mean completeness of reconstructed steps: {float(np.mean(step_completeness_list))}\n")
-        f.write(
-            f"mean precision of reconstructed scenarios: {float(np.mean(scenario_precision_list))}\n")
-        f.write(
-            f"mean recall of reconstructed scenarios: {float(np.mean(scenario_recall_list))}\n")
-        f.write(
-            f"mean soundness of reconstructed scenarios: {float(np.mean(scenario_soundness_list))}\n")
-        f.write(
-            f"mean completeness of reconstructed scenarios: {float(np.mean(scenario_completeness_list))}\n")
-        f.write(f"mean scenario detection rate: {float(np.mean(scenario_detected_list))}\n")
-
-    fn_log_path = Path(args.log.removesuffix(".txt") + "_fn_generating_scenarios.txt")
-    fn_log_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(fn_log_path, "w") as f:
-        for i in range(len(false_negative_scenarios_actual)):
-            f.write("actual scenario\n")
-            f.write(", ".join(str(exploit) for exploit in false_negative_scenarios_actual[i]) + "\n")
-            f.write("predicted scenario\n")
-            f.write(", ".join(str(exploit) for exploit in false_negative_scenarios_predicted[i]) + "\n")
+    dataset, detector, mapper_name = parse_dataset_metadata(args.file)
+    metadata = dict(
+        dataset=dataset, detector=detector, mapper=mapper_name, config=args.config,
+        anomaly_threshold=args.anomaly_threshold, suspect_threshold=args.suspect_threshold,
+        type_threshold=args.type_threshold, edge_recovery_threshold=args.edge_recovery_threshold,
+        max_idle_gap=args.max_idle_gap, seed=args.seed, times=args.times,
+    )
+    write_evaluation_outputs(
+        args.log, records, metadata, false_negative_scenarios_actual,
+        false_negative_scenarios_predicted, iterations_csv_path=args.iterations_csv,
+        summary_csv_path=args.summary_csv,
+    )
 
 
 if __name__ == "__main__":

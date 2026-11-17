@@ -1,4 +1,4 @@
-"""Reconstruct cAPTure scenarios from scored flow CSV files."""
+"""Reconstruct scenarios from a scored flow dataset CSV."""
 import argparse
 from datetime import timedelta
 import math
@@ -7,8 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from events.conversion import CaptureFlowEventConverter
-from scenario_configs.capture import ATK_TYPES, UNDETERMINED, DollarCharHostAttributes, create_hosts
-from scenario_generator.cli import validate_input_file, write_records
+from scenario_generator.cli import add_config_argument, load_config_argument, validate_input_file, write_records
 from scenario_reconstructor.attack_mapper import AttackMapper
 from scenario_reconstructor.engine import ScenarioReconstructor
 from scenario_reconstructor.manager import ReconstructionManager
@@ -54,24 +53,26 @@ def prepare_log_directories(args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("-f", "--file", required=True)
+    parser.add_argument("-f", "--file", required=True, help="path to input scored flow dataset CSV")
+    add_config_argument(parser)
     parser.add_argument("-o", "--output")
     parser.add_argument("--alerts-output")
     parser.add_argument("-q", "--quiet", action="store_true")
     add_reconstruction_arguments(parser)
     args = parser.parse_args(argv)
     validate_reconstruction_arguments(parser, args)
+    config = load_config_argument(args, parser)
     validate_input_file(parser, args.file)
-    flows = CaptureFlowEventConverter().convert(pd.read_csv(args.file))
+    flows = CaptureFlowEventConverter().convert(pd.read_csv(args.file), score_columns=config.score_columns)
     prepare_log_directories(args)
     reconstructor = ScenarioReconstructor(
-        create_hosts(), {DollarCharHostAttributes.START_MACHINE}, ATK_TYPES,
+        config.create_hosts(), config.external_host_attributes, config.atk_types,
         args.flow_log_path, args.state_log_path,
         max_idle_gap=timedelta(seconds=args.max_idle_gap),
     )
     manager = ReconstructionManager(
-        reconstructor, AttackMapper(ATK_TYPES, args.type_threshold),
-        args.suspect_threshold, args.anomaly_threshold, UNDETERMINED,
+        reconstructor, AttackMapper(config.atk_types, args.type_threshold),
+        args.suspect_threshold, args.anomaly_threshold, config.undetermined,
         length_when_log_flow_exploits=args.log_flow_exploits_threshold,
         length_when_log_states=args.log_states_threshold,
         suspect_list_max_length=args.suspect_max_length,

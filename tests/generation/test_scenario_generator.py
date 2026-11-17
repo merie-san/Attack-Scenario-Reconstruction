@@ -3,6 +3,7 @@ import random
 
 import pandas as pd
 
+from scenario_generator import ScenarioGenerationError
 from tests.support import ProjectTestCase
 
 
@@ -56,3 +57,43 @@ class TestScenarioGenerator(ProjectTestCase):
             self.assertEqual(
                 scenario_df.iloc[i]["step_number"], row["step_number"])
             self.assertEqual(scenario_df.iloc[i]["duration"], row["duration"])
+
+    def test_explicit_path_renders_exact_steps_without_search(self):
+        from unittest.mock import patch
+
+        path = [('imp', '10.0.0.20', '10.0.0.21'), ('rec', '10.0.0.22', '10.0.0.23'),
+                ('imp', '10.0.0.20', '10.0.0.21')]
+        with patch.object(self.generator, '_search_scenario') as search:
+            result = self.generator.generate_scenario(2, path=path)
+        search.assert_not_called()
+        self.assertIs(result, self.generator.result)
+        self.assertEqual(self.generator.attack_names, [step[0] for step in path])
+        self.assertEqual(self.generator.attack_ips, [step[1:] for step in path])
+        for index, (attack, src, dst) in enumerate(path):
+            rows = result[result['step_number'] == index]
+            self.assertEqual(set(rows['label']), {attack})
+            self.assertEqual(set(rows['src_ip']), {src})
+            self.assertEqual(set(rows['dst_ip']), {dst})
+
+    def test_invalid_explicit_paths_preserve_previous_result(self):
+        previous = self.generator.generate_scenario(path=[('rec', 'source', 'destination')])
+        cases = [([], ScenarioGenerationError), ([('rec', 'same', 'same')], ScenarioGenerationError),
+                 ([('missing', 'src', 'dst')], ScenarioGenerationError),
+                 ([('normal', 'src', 'dst')], ScenarioGenerationError),
+                 ('rec:src->dst', TypeError), (iter([]), TypeError),
+                 ([('rec', 'src')], ValueError), ([('rec', '', 'dst')], ValueError),
+                 ([('rec', 123, 'dst')], ValueError), (['abc'], ValueError)]
+        for path, error in cases:
+            with self.subTest(path=path), self.assertRaises(error):
+                self.generator.generate_scenario(path=path)
+            self.assertIs(self.generator.result, previous)
+
+    def test_explicit_path_still_validates_limits_and_normal_flows(self):
+        path = [('rec', 'source', 'destination')]
+        for options in ({'normal_flow_number_divisor': 0}, {'max_steps': 0},
+                        {'max_search_attempts': 0}):
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                self.generator.generate_scenario(path=path, **options)
+        del self.generator.data_source['normal']
+        with self.assertRaisesRegex(ScenarioGenerationError, 'normal flows'):
+            self.generator.generate_scenario(path=path)

@@ -1,15 +1,20 @@
 """Dataset definitions and command entry points are safe to reuse as libraries."""
 import contextlib
 import io
+import copy
+from dataclasses import fields, replace
+import json
 from pathlib import Path
 import re
 import runpy
 import sys
+import subprocess
 from unittest.mock import patch
 
 import pandas as pd
 
-from experiments import batch, capture
+from experiments import batch, capture, reporting
+from scenario_configs import load_scenario_config
 from scenario_configs.capture import ATK_TYPES, DOLLAR_CHAR, DollarCharHostAttributes, create_hosts
 from scenario_generator import ScenarioGenerationError, ScenarioSearchLimitError
 from scenario_generator import cli as generator_cli
@@ -18,10 +23,186 @@ from scenario_reconstructor.serialization import AlertStepParser
 from tests.support import ProjectTestCase, REPO_ROOT
 
 
+def campaign_definition():
+    """Return a small campaign independent of cAPTure attack identifiers."""
+    return dict(
+        attack_types=[dict(identifier='probe', preconditions=[dict(attributes=['start'], targets_source=True)],
+                           postconditions=['ready'], description='Discover target'),
+                      dict(identifier='finish', preconditions=[dict(attributes=['ready'], targets_source=False)],
+                           postconditions=['done'])],
+        hosts={'10.0.0.9': []}, external_host_attributes=['start'],
+        next_attack_dict={'start': ['probe'], 'probe': ['finish'], 'finish': ['end']},
+        possible_srcs={'probe': ['10.0.0.2'], 'finish': ['10.0.0.2']},
+        possible_dsts={'probe': ['10.0.0.9'], 'finish': ['10.0.0.9']}, final_atk='finish',
+        score_columns=['finish', 'probe'],
+    )
+
+
+class TestCampaignConfiguration(ProjectTestCase):
+    def write_json(self, data):
+        filename = self.log_path('campaign.json')
+        Path(filename).write_text(json.dumps(data), encoding='utf-8')
+        return filename
+
+    def test_capture_defaults_preserve_identity_score_order_and_fresh_hosts(self):
+        from events.conversion import CAPTURE_ATTACK_SCORE_COLUMNS
+
+        for spec in ('capture', 'scenario_configs.capture'):
+            config = load_scenario_config(spec)
+            self.assertEqual(config.score_columns, CAPTURE_ATTACK_SCORE_COLUMNS)
+            self.assertIs(config.attack_goal.attack_type, DOLLAR_CHAR)
+            self.assertEqual(config.attack_goal.destination_ip, '10.0.0.1')
+            self.assertEqual(config.external_host_attributes, {DollarCharHostAttributes.START_MACHINE})
+            first, second = config.create_hosts(), config.create_hosts()
+            self.assertIsNot(first[0], second[0])
+            self.assertIsNot(first[0].compromise_attributes, second[0].compromise_attributes)
+
+    def test_json_discovers_attributes_and_supplies_defaults(self):
+        config = load_scenario_config(self.write_json(campaign_definition()))
+        self.assertEqual([attack.identifier for attack in config.atk_types], ['probe', 'finish'])
+        self.assertEqual(config.atk_types[0].description, 'Discover target')
+        self.assertEqual(config.undetermined.identifier, 'undetermined')
+        self.assertIs(config.attack_goal.attack_type, config.atk_types[1])
+        self.assertEqual(config.enable_src_for, {})
+        self.assertEqual(config.enable_dst_for, {})
+        self.assertEqual(config.dst_restricted_atks, {})
+        self.assertEqual(config.enable_atks, [])
+        first, second = config.create_hosts(), config.create_hosts()
+        first[0].update_compromise_attributes(config.atk_types[0].postconditions)
+        self.assertEqual(second[0].compromise_attributes, set())
+        self.assertEqual({a.value for a in config.external_host_attributes}, {'start'})
+
+    def test_json_explicit_attributes_hosts_goal_and_undetermined(self):
+        data = campaign_definition()
+        data.update(attributes=['start', 'ready', 'done'],
+                    hosts=[dict(ip='10.0.0.9', attributes=['ready'])],
+                    attack_goal=dict(attack_type=None, source_ip='10.0.0.2', destination_ip='10.0.0.9'),
+                    undetermined=dict(identifier='unknown', preconditions=[], postconditions=['ready']))
+        del data['score_columns']
+        config = load_scenario_config(self.write_json(data))
+        self.assertEqual(config.score_columns, ('probe', 'finish'))
+        self.assertEqual(config.undetermined.identifier, 'unknown')
+        self.assertIsNone(config.attack_goal.attack_type)
+        self.assertEqual(config.attack_goal.source_ip, '10.0.0.2')
+        self.assertEqual(config.attack_goal.destination_ip, '10.0.0.9')
+        self.assertEqual({a.value for a in config.create_hosts()[0].compromise_attributes}, {'ready'})
+
+    def test_json_schema_errors_are_descriptive_value_errors(self):
+        cases = []
+        for field in ('attack_types', 'hosts', 'next_attack_dict', 'possible_srcs', 'possible_dsts', 'final_atk'):
+            data = campaign_definition()
+            del data[field]
+            cases.append((data, field))
+        for field, value in (('attributes', ['start']), ('score_columns', 'probe'), ('hosts', 'host'),
+                             ('enable_atks', {}), ('next_attack_dict', {'start': 'probe'}),
+                             ('attack_goal', {'attack_type': 'missing'})):
+            data = campaign_definition()
+            data[field] = value
+            cases.append((data, 'Unknown attribute' if field == 'attributes' else field))
+        data = campaign_definition()
+        data['attack_types'][0]['preconditions'][0]['targets_source'] = 'true'
+        cases.append((data, 'targets_source'))
+        data = copy.deepcopy(data)
+        del data['attack_types'][0]['identifier']
+        cases.append((data, 'identifier'))
+        for data, message in cases:
+            with self.subTest(data=data), self.assertRaisesRegex(ValueError, message):
+                load_scenario_config(self.write_json(data))
+        filename = self.write_json({})
+        Path(filename).write_text('{bad json', encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'Invalid scenario configuration'):
+            load_scenario_config(filename)
+
+    def test_python_modules_validate_required_definitions(self):
+        filename = self.log_path('invalid.py')
+        Path(filename).write_text('ATK_TYPES = []\n', encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'UNDETERMINED'):
+            load_scenario_config(filename)
+
+    def test_custom_json_and_python_campaigns_work_across_all_clis(self):
+        data = campaign_definition()
+        json_file = self.write_json(data)
+        python_file = self.log_path('campaign.py')
+        source = '''from scenario_reconstructor.models import AttackType, Host, HostAttribute, Precondition
+class Attributes(HostAttribute):
+    START = 'start'
+    READY = 'ready'
+    DONE = 'done'
+ATK_TYPES = [AttackType('probe', {Precondition({Attributes.START}, True)}, {Attributes.READY}),
+             AttackType('finish', {Precondition({Attributes.READY}, False)}, {Attributes.DONE})]
+UNDETERMINED = AttackType('undetermined', set(), set())
+HOSTS = [Host('10.0.0.9')]
+EXTERNAL_HOST_ATTRIBUTES = {Attributes.START}
+ATTACK_SCORE_COLUMNS = ('finish', 'probe')
+ENABLE_SRC_FOR = {}
+ENABLE_DST_FOR = {}
+DST_RESTRICTED_ATKS = {}
+ENABLE_ATKS = []
+'''
+        for field in ('next_attack_dict', 'possible_srcs', 'possible_dsts', 'final_atk'):
+            source += f'{field.upper()} = {data[field]!r}\n'
+        Path(python_file).write_text(source, encoding='utf-8')
+        rows = []
+        for index, label in enumerate(('normal', 'probe', 'finish')):
+            rows.append(dict(timestamp=f'2026-01-01 00:00:0{index}', duration=100, label=label,
+                             step_number=-1 if index == 0 else index, src_ip='10.0.0.2', dst_ip='10.0.0.9',
+                             src_port=40000, dst_port=80, protocol=6, anomaly_score=float(index > 0),
+                             probe=float(label == 'probe'), finish=float(label == 'finish')))
+        dataset, output, actual, predicted = [self.log_path(name) for name in
+                                              ('dataset.csv', 'out.csv', 'actual.txt', 'predicted.txt')]
+        pd.DataFrame(rows).to_csv(dataset, index=False)
+        for spec in (json_file, python_file):
+            with self.subTest(config=spec):
+                config = load_scenario_config(spec)
+                first, second = config.create_hosts(), config.create_hosts()
+                first[0].update_compromise_attributes(config.atk_types[0].postconditions)
+                self.assertEqual(second[0].compromise_attributes, set())
+                generator_cli.main(['-f', dataset, '-o', output, '--steps-output', actual,
+                                    '--config', spec, '--quiet'])
+                reconstructor_cli.main(['-f', output, '-o', predicted, '-c', spec, '--quiet'])
+                parser = AlertStepParser(config.atk_types)
+                self.assertEqual([parser.parse_step(line) for line in Path(actual).read_text().splitlines()],
+                                 [parser.parse_step(line) for line in Path(predicted).read_text().splitlines()])
+                log = self.log_path('custom-metrics.txt')
+                capture.main(['-f', dataset, '-c', spec, '-t', '2', '-l', log, '--quiet'])
+                self.assertIn('mean scenario detection rate: 1.0', Path(log).read_text())
+
+
 class TestExperimentEntryPoints(ProjectTestCase):
+    def test_config_and_path_errors_precede_dataset_reads(self):
+        with patch('pandas.read_csv') as read_csv, contextlib.redirect_stderr(io.StringIO()):
+            for main, required in ((capture.main, []), (reconstructor_cli.main, []),
+                                   (generator_cli.main, ['-o', self.log_path('out.csv')])):
+                for config in ('nonexistent_campaign', self.log_path('missing.json')):
+                    with self.subTest(main=main, config=config), self.assertRaises(SystemExit) as result:
+                        main(['-f', 'missing.csv', *required, '--config', config])
+                    self.assertEqual(result.exception.code, 2)
+            for main, required in ((capture.main, []), (generator_cli.main, ['-o', 'out.csv'])):
+                for options in (['--step', 'broken'], ['--step', 'attack,src'],
+                                ['--step', 'attack:same->same'],
+                                ['--scenario-path', 'missing.json'],
+                                ['--scenario-path', 'attack:src->dst', '--step', 'attack,src,dst']):
+                    with self.subTest(main=main, options=options), self.assertRaises(SystemExit) as result:
+                        main(['-f', 'missing.csv', *required, *options])
+                    self.assertEqual(result.exception.code, 2)
+        read_csv.assert_not_called()
+
+    def test_config_imports_and_default_loading_preserve_domain_isolation(self):
+        script = (
+            'import sys; import scenario_configs; import scenario_reconstructor; '
+            'scenario_configs.load_scenario_config(); '
+            'assert not ({"metrics", "pandas", "sklearn"} & sys.modules.keys())'
+        )
+        result = subprocess.run([sys.executable, '-c', script], cwd=REPO_ROOT,
+                                capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_importing_runners_does_not_read_data_or_launch_processes(self):
-        with patch('pandas.read_csv') as read_csv, patch('subprocess.run') as run:
+        with patch('pandas.read_csv') as read_csv, patch('subprocess.run') as run, \
+                patch.object(pd.DataFrame, 'to_csv') as to_csv, patch.object(Path, 'mkdir') as mkdir, \
+                patch('builtins.open') as open_file, patch.object(Path, 'open') as path_open:
             for filename in ('experiments/capture.py', 'experiments/batch.py',
+                             'experiments/reporting.py',
                              'scenario_generator/cli.py', 'scenario_reconstructor/cli.py',
                              'scenario_reconstructor/reconstruct_cAPTure.py'):
                 with self.subTest(filename=filename):
@@ -29,6 +210,10 @@ class TestExperimentEntryPoints(ProjectTestCase):
             runpy.run_path(str(REPO_ROOT / 'run_scripts.py'), run_name='import_check')
         read_csv.assert_not_called()
         run.assert_not_called()
+        to_csv.assert_not_called()
+        mkdir.assert_not_called()
+        open_file.assert_not_called()
+        path_open.assert_not_called()
 
     def test_legacy_runner_exports_the_canonical_main_and_definitions(self):
         from scenario_reconstructor import reconstruct_cAPTure as legacy
@@ -97,6 +282,7 @@ class TestExperimentEntryPoints(ProjectTestCase):
         invalid = [
             ['--normal-divisor', '0'], ['--max-steps', '0'],
             ['--max-search-attempts', '0'], ['--max-generation-retries', '-1'],
+            ['--seed', '-1'], ['--seed', str(2**32)],
         ]
         with patch('pandas.read_csv') as read_csv, contextlib.redirect_stderr(io.StringIO()):
             for main, required in ((capture.main, []), (generator_cli.main, ['-o', self.log_path('out.csv')])):
@@ -141,6 +327,85 @@ class TestExperimentEntryPoints(ProjectTestCase):
                          {batch.DATASET_ROOT + name for name in batch.DATASET_FILES})
 
 
+class TestEvaluationReporting(ProjectTestCase):
+    def test_dataset_metadata_preserves_detector_names(self):
+        for filename, detector, mapper in (
+            ('xgb_lr_rec_dataset.csv', 'xgb', 'lr'),
+            ('xgb_lr.csv', 'xgb', 'lr'),
+            ('logistic_regression_gnb_rec_dataset.csv', 'logistic_regression', 'gnb'),
+            ('perfect_xgb_rec_dataset.csv', 'perfect', 'xgb'),
+            ('xgb_perfect_rec_dataset.csv', 'xgb', 'perfect'),
+            ('other.csv', '', ''), ('unknown_mapper_rec_dataset.csv', '', ''),
+            ('lr_rec_dataset.csv', '', ''),
+        ):
+            with self.subTest(filename=filename):
+                self.assertEqual(reporting.parse_dataset_metadata('./data/final datasets/' + filename),
+                                 (filename, detector, mapper))
+
+    def test_text_formats_population_statistics_and_batch_rebuild(self):
+        record = reporting.IterationRecord(**{field.name: 0 for field in fields(reporting.IterationRecord)})
+        records = [record, replace(record, iteration=1, id_tp=4, rec_tp=2, scenario_detected=1)]
+        root = Path(self.log_path('runs'))
+        log = root / 'run.txt'
+        reporting.write_evaluation_outputs(log, records, {'dataset': 'example.csv'},
+                                           [['first', 'second']], [['predicted']])
+        self.assertEqual(reporting.default_fn_log_path(log).read_text(),
+                         'actual scenario\nfirst, second\npredicted scenario\npredicted\n')
+        self.assertEqual(log.read_text(), (
+            'mean ID true negatives: 0.0, mean REC true negatives: 0.0\n'
+            'mean ID false positives: 0.0, mean REC false positives: 0.0\n'
+            'mean ID false negatives: 0.0, mean REC false negatives: 0.0\n'
+            'mean ID true positives: 2.0, mean REC true positives: 1.0\n'
+            'mean precision of reconstructed alerts: 0.0\n'
+            'mean recall of reconstructed alerts: 0.0\n'
+            'mean soundness of reconstructed steps: 0.0\n'
+            'mean completeness of reconstructed steps: 0.0\n'
+            'mean precision of reconstructed scenarios: 0.0\n'
+            'mean recall of reconstructed scenarios: 0.0\n'
+            'mean soundness of reconstructed scenarios: 0.0\n'
+            'mean completeness of reconstructed scenarios: 0.0\n'
+            'mean scenario detection rate: 0.5\n'))
+        summary = pd.read_csv(reporting.default_summary_csv_path(log))
+        self.assertEqual(summary.loc[0, 'id_tp_std'], 2.0)
+        self.assertEqual(summary.loc[0, 'scenario_detected_std'], 0.5)
+        second_log = root / 'second.txt'
+        reporting.write_evaluation_outputs(second_log, [record], {'dataset': 'second.csv'}, [], [])
+        summary_out, iterations_out = reporting.aggregate_batch_results(
+            root,
+            summary_paths=[reporting.default_summary_csv_path(second_log), root / 'missing_summary.csv',
+                           reporting.default_summary_csv_path(log)],
+            iteration_paths=[reporting.default_iterations_csv_path(log),
+                             reporting.default_iterations_csv_path(second_log)],
+        )
+        self.assertEqual(pd.read_csv(summary_out)['dataset'].tolist(), ['second.csv', 'example.csv'])
+        self.assertEqual(len(pd.read_csv(iterations_out)), 3)
+        reporting.main(['-d', str(root)])
+        first = (summary_out.read_bytes(), iterations_out.read_bytes())
+        reporting.main(['-d', str(root)])
+        self.assertEqual(first, (summary_out.read_bytes(), iterations_out.read_bytes()))
+        self.assertEqual(len(pd.read_csv(summary_out)), 2)
+        self.assertEqual(len(pd.read_csv(iterations_out)), 3)
+
+    def test_batch_noop_and_partial_inputs(self):
+        root = Path(self.log_path('absent'))
+        self.assertEqual(reporting.aggregate_batch_results(root), (None, None))
+        self.assertEqual(reporting.main(['-d', str(root)]), (None, None))
+        self.assertEqual(reporting.aggregate_batch_results(
+            root, [root / 'missing_summary.csv'], [root / 'missing_iterations.csv']), (None, None))
+        self.assertFalse(root.exists())
+        root.mkdir()
+        self.assertEqual(reporting.aggregate_batch_results(root), (None, None))
+        self.assertEqual(list(root.iterdir()), [])
+        source = Path(self.log_path('source.csv'))
+        pd.DataFrame([{'id_tp_mean': 2.0}]).to_csv(source, index=False)
+        summary, iterations = reporting.aggregate_batch_results(root, [source], [])
+        self.assertEqual(summary, root / 'batch_summary.csv')
+        self.assertIsNone(iterations)
+        summary, iterations = reporting.aggregate_batch_results(root, [], [source])
+        self.assertIsNone(summary)
+        self.assertEqual(iterations, root / 'batch_iterations.csv')
+
+
 class TestCaptureCliIntegration(ProjectTestCase):
     def setUp(self):
         super().setUp()
@@ -168,6 +433,42 @@ class TestCaptureCliIntegration(ProjectTestCase):
             generator_cli.main(arguments)
         self.assertEqual(stdout.getvalue(), '')
         return paths
+
+    def test_evaluation_csv_defaults_and_custom_paths_include_all_metrics(self):
+        dataset = self.log_path('logistic_regression_lr_rec_dataset.csv')
+        Path(dataset).write_bytes(Path(self.input_file).read_bytes())
+        for custom in (False, True):
+            with self.subTest(custom=custom):
+                log = self.log_path(f'report-{custom}/results.txt')
+                iterations = (Path(self.log_path('custom/iterations/out.csv')) if custom
+                              else reporting.default_iterations_csv_path(log))
+                summary = (Path(self.log_path('custom/summary/out.csv')) if custom
+                           else reporting.default_summary_csv_path(log))
+                options = ['--iterations-csv', str(iterations), '--summary-csv', str(summary)] if custom else []
+                with patch.object(capture.ReconstructionManager, 'get_fns', return_value=[object(), object()]), \
+                        patch.object(capture.ReconstructionManager, 'get_fps', return_value=[object()]):
+                    capture.main(['-f', dataset, '-t', '2', '-l', log, '--seed', '42', '--quiet', *options])
+                frame, stats = pd.read_csv(iterations), pd.read_csv(summary)
+                self.assertEqual(len(frame), 2)
+                self.assertEqual(frame['iteration'].tolist(), [0, 1])
+                self.assertEqual(frame['recovered_fns'].tolist(), [2, 2])
+                self.assertEqual(frame['rejected_fps'].tolist(), [1, 1])
+                self.assertEqual(len(stats), 1)
+                for key, value in dict(dataset=Path(dataset).name, detector='logistic_regression', mapper='lr',
+                                       config='capture', seed=42, times=2).items():
+                    self.assertTrue((frame[key] == value).all())
+                    self.assertEqual(stats.loc[0, key], value)
+                for field in fields(reporting.IterationRecord):
+                    self.assertIn(field.name, frame.columns)
+                    if field.name != 'iteration':
+                        self.assertAlmostEqual(stats.loc[0, field.name + '_mean'], frame[field.name].mean())
+                        self.assertAlmostEqual(stats.loc[0, field.name + '_std'], frame[field.name].std(ddof=0))
+                self.assertTrue(frame['scenario_detected'].isin([0, 1]).all())
+                self.assertTrue(Path(log).is_file())
+                self.assertTrue(reporting.default_fn_log_path(log).is_file())
+                if custom:
+                    self.assertFalse(reporting.default_iterations_csv_path(log).exists())
+                    self.assertFalse(reporting.default_summary_csv_path(log).exists())
 
     def test_generate_then_reconstruct_scored_scenario_with_nested_outputs_and_archives(self):
         paths = self.generate_scenario()
@@ -201,6 +502,36 @@ class TestCaptureCliIntegration(ProjectTestCase):
         self.assertCountEqual(predicted_alerts, actual_alerts)
         for filename in (flow_log, state_log):
             self.assertGreater(Path(filename).stat().st_size, 0)
+
+    def test_capture_config_is_explicitly_supported_by_all_clis(self):
+        paths = self.generate_scenario(config='capture')
+        reconstructor_cli.main(['-f', paths['scenario'], '--config', 'capture', '--quiet'])
+        log = self.log_path('capture.txt')
+        capture.main(['-f', self.input_file, '-c', 'capture', '-t', '1', '-l', log, '--quiet', '--seed', '42'])
+        self.assertIn('mean scenario detection rate:', Path(log).read_text())
+
+    def test_explicit_cli_paths_produce_exact_step_sequences(self):
+        expected = [('scp_inst', '10.0.0.2', '10.0.0.7'),
+                    ('nmap_mqtt', '10.0.0.7', '10.0.0.1'),
+                    ('scp_inst', '10.0.0.2', '10.0.0.7')]
+        json_path, text_path = self.log_path('path.json'), self.log_path('path.txt')
+        Path(json_path).write_text(json.dumps({'steps': [list(expected[0]),
+            dict(attack=expected[1][0], source_ip=expected[1][1], destination_ip=expected[1][2]),
+            dict(attack=expected[2][0], src_ip=expected[2][1], dst_ip=expected[2][2])]}), encoding='utf-8')
+        Path(text_path).write_text('# ordered steps\n\n' + '\n'.join(','.join(step) for step in expected),
+                                   encoding='utf-8')
+        specs = [f'{attack}:{src}->{dst}' for attack, src, dst in expected]
+        options = [sum((['--step', spec] for spec in specs), []),
+                   ['--scenario-path', json_path], ['--scenario-path', text_path],
+                   ['--scenario-path', ';'.join(specs)], ['--scenario-path', '|'.join(specs)]]
+        for arguments in options:
+            with self.subTest(arguments=arguments):
+                output, steps_file = self.log_path('explicit.csv'), self.log_path('explicit.txt')
+                generator_cli.main(['-f', self.input_file, '-o', output, '--steps-output', steps_file,
+                                    '--quiet', *arguments])
+                steps = [AlertStepParser(ATK_TYPES).parse_step(line)
+                         for line in Path(steps_file).read_text().splitlines()]
+                self.assertEqual([(s.attack_type.identifier, s.source_ip, s.destination_ip) for s in steps], expected)
 
     def test_generation_retries_search_limit_then_writes_real_outputs(self):
         original = generator_cli.ScenarioGenerator.generate_scenario

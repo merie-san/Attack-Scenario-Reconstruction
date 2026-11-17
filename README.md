@@ -1,309 +1,268 @@
 # Attack Scenario Reconstruction
 
-This is a code repository for my master thesis on Attack Scenario Reconstruction. The repository contains four modules:
+A Python framework for turning isolated, noisy network intrusion alerts into explainable multi-stage attack scenarios. The project extends one of the author's research papers as well as the Master's thesis and is demonstrated on the [`dollar_char` campaign](https://www.sciencedirect.com/science/article/pii/S1389128626005827) from the cAPTure IIoT/MQTT dataset. It provides an end-to-end workflow for preparing scored flow datasets, synthesizing multi-step attack scenarios, reconstructing attack timelines and causal graphs, and evaluating reconstruction quality.
 
-- The **Dataset Preprocessor**
-- The **Scenario Reconstructor**
-- The **Scenario Generator**
-- The **Metrics collector**
+---
 
-The Dataset Preprocessor consists in a series of Jupyter notebooks which are responsible for transforming the initial intrusion detection dataset into a format suitable for scenario reconstruction. We started from the [cAPTure dataset](https://www.sciencedirect.com/science/article/pii/S1389128626005827) and extracted traffic data corresponding to the dollar_char campaign, which is then preprocessed to adapt it to our own reconstruction requirements. The results is a separated test and train set. The train set is used to build the necessary machine learners for reconstruction, while the test set is used as the basis for the reconstruction dataset through enrichment with anomaly and attack type score. 
+## 1. Introduction & Project Structure
 
-The resulting dataset, which we call the event dataset, contain the network flows extracted from the corresponding campaign labeled with a corresponding anomaly and attack type score. This dataset can then be used by the Scenario Generator module to synthetically generate custom attack scenarios which can then be used for the purpose of metrics collection and reconstruction evaluation. To produce the target scenario through the Scenario Generator one must use its API and provide the requested parameters.  
+Traditional intrusion detection systems inspect network flows one by one. In practice, this leaves security analysts with fragmented alerts, false positives triggered by normal traffic, and missing steps caused by false negatives.
 
-From the results returned by the Scenario Generator module and the Scenario reconstructor module, the Metrics Collector is then able to compute and log performance and quality metrics of interest. Three types of metrics are provided: confusion matrix metrics which assess the influence that the reconstructor has on intrusion detection results, recall and precision metrics which assess the ability of the reconstructor in including individual anomalous events, and finally, soundness and completeness metrics which assess the reconstructor's ability in making correct associations between events.   
+**Attack Scenario Reconstruction** addresses this by reasoning about **network state** across time. Each host in the monitored network is modeled with security-relevant attributes (for example, *SSH discovered* or *SSH compromised*), and each attack type specifies the preconditions it requires and the postconditions it produces. Using this model, the framework carries out four main functions:
 
-Lastly, the Scenario Reconstructor is the module responsible for transforming isolated alerts in explainable attack scenarios based on the current network state, the alert history and the attack's characteristics. The reconstructor models the system as a set of hosts, each with their compromise attributes describing attack relevant properties. When an alert is produced we assign an attack type to the alert based on its attack type scores and check the feasibility of the attack in the current network state: if the attack is feasible, the alert is added and the network state is modified accordingly, while if it is not we check the alert history and try to find false negative classifications.
+1. **Dataset Preparation & ML Scoring**
+   Converts packet captures into flow tables, augments benign background traffic, and scores each network flow with an overall anomaly score and per-attack-type probabilities.
+2. **Synthetic Scenario Generation**
+   Takes a labeled/scored flow dataset and synthesizes complete multi-step attack campaigns mixed with background traffic. Scenarios can either be sampled automatically under valid campaign progression rules or generated from an explicit step-by-step path.
+3. **State-Based Scenario Reconstruction**
+   Processes a stream of scored flows to build an attack timeline and causal graph:
+   - **Noise filtering & false-positive rejection:** Flows below a suspicion cutoff are ignored, while high-confidence alerts are accepted only if their preconditions hold in the current network state.
+   - **False-negative recovery:** When a high-confidence alert arrives with missing prerequisites, the reconstructor inspects lower-confidence *suspect* flows from earlier in the stream to recover the missed enabling step—only committing the recovery if the entire sequence validates cleanly.
+   - **Step aggregation:** Related alerts sharing the same source, destination, and attack type within a configurable idle gap are grouped into discrete attack steps.
+   - **Causal AND/OR Attack Graph:** Reconstructed steps are connected into a Temporal AND/OR Directed Acyclic Graph (DAG) showing which earlier steps enabled later ones.
+4. **Four-Stage Evaluation**
+   Evaluates every stage of the pipeline independently—alert detection, alert-to-step grouping, step occurrence coverage, and causal graph / goal recovery—so errors at one level do not distort metrics at another.
 
-At the end of the reconstruction procedure a sequence of attack steps is obtained from the reconstructor representing predicted attacker actions. The configuration of the Scenario Reconstructor happens through the definition of attack relevant host attributes based on the target network's properties and the types of attacks we are considering, and the pre- and post-conditions of the same attacks. These pre- and post-conditions are defined as assertions on the source or destination hosts of attacks regarding their compromise attributes.
+### Repository Layout
 
-For more detailed information on the structure and the configuration of the various modules see the thesis in question.  
+```text
+Attack-Scenario-Reconstruction/
+├── jupyter notebook/        # Notebooks for PCAP conversion, labeling, and ML scoring
+├── preprocessing/           # Reusable augmentation, IPv4 filtering, time, and calibration helpers
+├── scenario_configs/        # Built-in cAPTure campaign definition and .py/.json config loader
+├── scenario_generator/      # Synthetic scenario synthesis and CLI (`python -m scenario_generator`)
+├── events/                  # Conversion from scored flow CSVs into UTC FlowEvent streams
+├── scenario_reconstructor/  # State engine, FN recovery, aggregation, DAG, and CLI (`python -m scenario_reconstructor`)
+├── metrics/                 # Four-stage evaluation suite (`MetricsCalculator`)
+├── experiments/             # Runners for the cAPTure evaluation benchmark (`experiments.capture`, `experiments.batch`)
+└── tests/                   # Unit, regression, and integration tests
+```
 
-### Scenario generation failures and bounded backtracking
+*(Note: `improvement_plan/CHANGES.md` records historical design decisions and version updates; `AGENTS.md` documents architectural invariants for developers and coding agents.)*
 
-Construction validates the core template fields (`timestamp`, `duration`, `label`,
-and `step_number`) on a private dataframe copy. Timestamps must be valid and present,
-durations must be finite nonnegative numbers in milliseconds, group identifiers must
-be present, and column names must be unique. Empty or invalid templates raise
-`ScenarioGenerationError`; include construction in the `try` block when handling
-these failures. Timestamp conversion and numeric-duration normalization do not change
-the caller's dataframe. Existing timezone interpretation is retained.
+---
 
-Inter-step delays use the absolute value of the normal draw before rounding to
-seconds. Negative draws become positive delays; zero remains allowed. Steps are
-still placed relative to the preceding step's last flow start and may overlap its
-flow durations.
+## 2. Usage Tutorial
 
-`generate_scenario()` filters infeasible transitions and host pairs before sampling
-and backtracks when a valid local choice leads to a dead end. Candidate hosts and
-enabled-host lists are restored for each alternative. Sampling follows attack,
-then source, then destination among remaining feasible choices; completed scenarios
-are not guaranteed to be uniformly distributed.
+### Step 1: Installation
 
-Keyword-only limits are `max_steps=100` and `max_search_attempts=10_000`. The step
-limit counts attack executions; attempts count tested attack/source/destination
-choices and `end` transitions, including choices rejected at the depth boundary.
-Repetition is allowed within these bounds. Only a configured `end` transition
-completes a scenario; reaching a limit never returns a truncated scenario.
+Create and activate a Python virtual environment, then install the dependencies:
 
-Callers can distinguish exhausted choices from incomplete bounded search:
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### Step 2: Prepare or Obtain a Scored Flow Dataset CSV
+
+Both the generator and reconstructor read **labeled/scored flow dataset CSVs**. Each row represents a network flow with these columns:
+
+- **Flow metadata & labels:** `src_ip`, `src_port`, `dst_ip`, `dst_port`, `protocol`, `timestamp`, `duration` (ms), `label` (`"normal"` for background traffic, or an attack name), and `step_number` (`-1` for `"normal"`, or an integer ID grouping flows belonging to the same attack execution).
+- **Detector & classifier scores:** `anomaly_score` in `[0, 1]`, plus one score column per configured attack type (for the built-in `capture` campaign: `nmap_10_T5`, `nmap_mqtt`, `nmap_banner`, `brute_force_malformed`, `dollar_char`, `scp_inst`).
+
+You can generate these scored CSVs from raw cAPTure traffic by running the notebooks in `jupyter notebook/` in order (`convert_to_csv.ipynb` → `process_attack_train.ipynb` & `process_attack_test.ipynb` → `attack_normal_merging.ipynb` → `reconstruction_dataset_creation.ipynb`).
+
+---
+
+### Step 3: Generate Synthetic Scenarios (`scenario_generator`)
+
+Use `python -m scenario_generator` to turn a scored/labeled flow dataset CSV into a complete synthetic attack scenario (`.csv`) along with optional ground-truth steps and alerts.
+
+#### Option A: Automatic Scenario Generation
+Sample a valid multi-step scenario using a campaign configuration (`--config capture` is the default):
+
+```powershell
+python -m scenario_generator `
+  -f data/final_dataset.csv `
+  --config capture `
+  -o output/scenario.csv `
+  --steps-output output/actual_steps.txt `
+  --alerts-output output/actual_alerts.txt `
+  --normal-divisor 10 `
+  --seed 42
+```
+
+- `--normal-divisor`: Keeps every Nth normal background flow (`1` keeps all normal flows; `10` keeps 10%).
+- `--seed`: Fixes random sampling and inter-step timing for reproducible scenarios.
+- `--max-steps`, `--max-search-attempts`, `--max-generation-retries`: Bound the scenario search depth and retries.
+
+#### Option B: Explicit Step Sequence
+If you want to synthesize a specific sequence of attack steps instead of sampling one randomly, pass repeatable `--step` arguments or a `--scenario-path` file:
+
+```powershell
+# Using repeatable --step arguments ('attack:src->dst' or 'attack,src,dst')
+python -m scenario_generator `
+  -f data/final_dataset.csv `
+  -o output/scenario.csv `
+  --step "nmap_10_T5:10.0.0.2->10.0.0.7" `
+  --step "brute_force_malformed:10.0.0.2->10.0.0.7" `
+  --seed 42
+
+# Or using a JSON / text file of steps
+python -m scenario_generator `
+  -f data/final_dataset.csv `
+  -o output/scenario.csv `
+  --config campaign.json `
+  --scenario-path steps.json
+```
+
+`--scenario-path` accepts a JSON list (such as `[["probe", "10.0.0.2", "10.0.0.9"]]`), a `{"steps": [...]}` object, a line-by-line text file, or an inline `;`/`|`-separated string.
+
+#### Defining a Custom Campaign (`--config`)
+Both `scenario_generator` and `scenario_reconstructor` accept `-c` / `--config` pointing to a named built-in config (`capture`), a `.py` config module, or a `.json` file:
+
+```json
+{
+  "attack_types": [
+    {
+      "identifier": "probe",
+      "preconditions": [{"attributes": ["start"], "targets_source": true}],
+      "postconditions": ["discovered"],
+      "description": "Scan target host"
+    },
+    {
+      "identifier": "exploit",
+      "preconditions": [{"attributes": ["discovered"], "targets_source": false}],
+      "postconditions": ["compromised"]
+    }
+  ],
+  "hosts": {"10.0.0.9": []},
+  "external_host_attributes": ["start"],
+  "next_attack_dict": {"start": ["probe"], "probe": ["exploit"], "exploit": ["end"]},
+  "possible_srcs": {"probe": ["10.0.0.2"], "exploit": ["10.0.0.2"]},
+  "possible_dsts": {"probe": ["10.0.0.9"], "exploit": ["10.0.0.9"]},
+  "final_atk": "exploit"
+}
+```
+
+*(Optional JSON fields include `"attributes"`, `"undetermined"`, `"attack_goal"`, `"score_columns"`, `"enable_src_for"`, `"enable_dst_for"`, `"dst_restricted_atks"`, and `"enable_atks"`.)*
+
+---
+
+### Step 4: Reconstruct a Scenario (`scenario_reconstructor`)
+
+Run the reconstructor on any scored flow CSV (such as the `output/scenario.csv` produced in Step 3):
+
+```powershell
+python -m scenario_reconstructor `
+  -f output/scenario.csv `
+  --config capture `
+  -o output/predicted_steps.txt `
+  --alerts-output output/predicted_alerts.txt `
+  --anomaly-threshold 0.8 `
+  --suspect-threshold 0.4 `
+  --type-threshold 0.2 `
+  --max-idle-gap 1.0
+```
+
+Key reconstruction parameters:
+- `--anomaly-threshold` (default `0.8`): Flows with `anomaly_score` strictly above this value enter validation as candidate attack alerts.
+- `--suspect-threshold` (default `0.4`): Flows scoring in `(suspect_threshold, anomaly_threshold]` are buffered as suspects for potential false-negative recovery. Flows at or below `suspect_threshold` are ignored.
+- `--type-threshold` (default `0.2`): Per-attack-type probability cutoff used to assign primary and alternative attack types.
+- `--max-idle-gap` (default `1.0`, seconds): Maximum silence between consecutive alerts of the same context before splitting them into separate attack steps.
+- Archive options (`--flow-log-path`, `--state-log-path`, `--log-flow-exploits-threshold`, `--log-states-threshold`, `--suspect-max-length`) and `--quiet` are also available (run with `--help` for all options).
+
+---
+
+### Step 5: Run the cAPTure Evaluation Experiments
+
+To reproduce the multi-cycle cAPTure dataset benchmark (repeatedly generating scenarios from a cAPTure-structured dataset, reconstructing them, and averaging all evaluation metrics):
+
+```powershell
+python -m experiments.capture `
+  -f data/final_dataset.csv `
+  -t 100 `
+  -l output/capture_metrics.txt `
+  --anomaly-threshold 0.8 `
+  --suspect-threshold 0.4 `
+  --type-threshold 0.2 `
+  --edge-recovery-threshold 0.8 `
+  --seed 42 `
+  --quiet
+```
+
+This writes mean confusion matrices, alert precision/recall, step aggregation soundness/completeness, step occurrence precision/recall, causal graph soundness/completeness, and goal detection rate to `output/capture_metrics.txt`, along with a separate `*_fn_generating_scenarios.txt` log for any cycle where reconstruction introduced extra false negatives.
+
+Each evaluation also writes `*_iterations.csv` (one row per cycle, numbered from zero) and `*_summary.csv` (one row per run). Iteration rows contain actual/predicted step and alert counts, recovered false negatives, rejected false positives, and all four metric layers. Summary rows contain the mean and population standard deviation (`ddof=0`) of each numeric metric and count. Both CSVs include dataset filename, detector/mapper names parsed from the filename, configuration, thresholds, idle gap, seed, and cycle count. Use `--iterations-csv <path>` and `--summary-csv <path>` to override the default paths beside the text log; parent directories are created automatically.
+
+To run the full benchmark grid across all preconfigured model combinations and thresholds in `experiments/batch.py`:
+
+```powershell
+python -m experiments.batch
+```
+
+Batch runs keep the configured 48-job grid, use `--seed 42` by default, and combine available CSVs only from jobs that exited successfully in the current batch into `batch_summary.csv` and `batch_iterations.csv`. A new batch removes the previous two combined reports before dispatch; if all jobs fail, no combined reports remain. Failed-job files are preserved for diagnosis and excluded from automatic batch aggregation, including partially written reports. Use `--seed 7` to change the seed, `--no-seed` to disable seeding, `--quiet` to suppress progress, and `--results-dir <directory>` to choose the location for run logs and aggregate CSVs.
+
+`experiments/reporting.py` provides the reusable CSV/text writers and batch aggregation API. Rebuild the aggregate CSVs from existing run CSVs without rerunning evaluations:
+
+```powershell
+python -m experiments.reporting -d "data/result logs"
+```
+
+This standalone rebuild discovers available CSVs without knowing which jobs succeeded; use it on a curated set of run files. Aggregation skips missing files, excludes the master CSVs from discovery, and creates no directories or files when no run CSVs exist.
+
+---
+
+### Step 6: Python API Quickstart
+
+You can also embed generation, reconstruction, DAG construction, and evaluation directly in Python:
 
 ```python
-from scenario_generator import (
-    NoFeasibleScenarioError,
-    ScenarioGenerationError,
-    ScenarioSearchLimitError,
+import pandas as pd
+from events.conversion import CaptureFlowEventConverter
+from metrics import MetricsCalculator
+from scenario_configs import load_scenario_config
+from scenario_generator import ScenarioGenerator
+from scenario_reconstructor.attack_mapper import AttackMapper
+from scenario_reconstructor.dag import AttackScenarioDAG
+from scenario_reconstructor.engine import ScenarioReconstructor
+from scenario_reconstructor.manager import ReconstructionManager
+
+config = load_scenario_config("capture")  # Or pass a .py / .json config file path.
+dataset_df = pd.read_csv("data/final_dataset.csv")
+
+# 1. Generate a synthetic scenario
+generator = ScenarioGenerator(
+    dataset_df, config.next_attack_dict, config.enable_src_for, config.enable_dst_for,
+    config.possible_srcs, config.possible_dsts, config.dst_restricted_atks,
+    config.final_atk, config.enable_atks,
 )
+scenario_df = generator.generate_scenario(normal_flow_number_divisor=10)
+actual_steps, actual_alerts = generator.export_results(config.atk_types)
 
-try:
-    scenario_df = generator.generate_scenario(max_steps=100, max_search_attempts=10_000)
-except NoFeasibleScenarioError as error:
-    # Reject this request: the available alternatives were exhausted.
-    print(error)
-except ScenarioSearchLimitError as error:
-    # Retry with different bounds/seed, skip, or stop according to caller policy.
-    print(error.limit_name, error.limit, error.attempts)
-except ScenarioGenerationError as error:
-    # Other explicit generation failures, such as missing normal-flow templates.
-    print(error)
-else:
-    steps, alerts = generator.export_results(attack_types)
+# 2. Reconstruct the scenario from scored flows
+flows = CaptureFlowEventConverter().convert(scenario_df, score_columns=config.score_columns)
+reconstructor = ScenarioReconstructor(
+    config.create_hosts(), config.external_host_attributes, config.atk_types,
+    "./data/flow_exploits.log", "./data/states.log",
+)
+manager = ReconstructionManager(
+    reconstructor, AttackMapper(config.atk_types, type_threshold=0.2),
+    suspect_threshold=0.4, anomaly_threshold=0.8, unknown_attack=config.undetermined,
+)
+for flow in flows:
+    manager.accept(flow)
+
+predicted_dag, predicted_alerts = manager.get_results()
+actual_dag = AttackScenarioDAG(actual_steps, tracked_host_ips=reconstructor.host_dict)
+
+# 3. Evaluate across all four stages
+calc = MetricsCalculator()
+print("Alert P/R:", calc.get_alert_precision(predicted_alerts, actual_alerts, config.undetermined),
+      calc.get_alert_recall(predicted_alerts, actual_alerts, config.undetermined))
+print("Causal Soundness/Completeness:",
+      calc.get_scenario_soundness_completeness(predicted_dag, actual_dag, config.undetermined))
+print("Goal Detected:",
+      calc.is_scenario_detected(predicted_dag, actual_dag, config.attack_goal, config.undetermined))
 ```
 
-All three failures inherit from `RuntimeError`. Invalid argument types or nonpositive
-limits raise `TypeError`/`ValueError`. An exception preserves the last completed
-`result` and exported metadata; callers should process a new result only on success.
+---
 
-### Flow-event timestamp conversion
+### Running the Test Suite
 
-`events.conversion.CaptureFlowEventConverter.convert()` produces UTC-aware start and end timestamps.
-Naive input timestamps are interpreted as UTC; explicit timezone offsets are
-converted while preserving the instant. Durations remain milliseconds. The
-converter works on a private copy and leaves the input dataframe unchanged.
+To verify the entire framework:
 
-### Code organization
-
-Reusable code is organized by responsibility:
-
-| Package | Responsibility |
-| --- | --- |
-| `events` | Scored flow model and cAPTure dataframe conversion |
-| `scenario_generator` | Template validation, bounded search, temporal rendering, and generation API |
-| `scenario_configs` | Dataset-specific attack rules and fresh host initialization |
-| `preprocessing` | Flow augmentation, endpoint filtering, timestamps, training schema/encoding, and calibration |
-| `scenario_reconstructor` | State validation, recovery, aggregation, storage, and causal DAGs |
-| `metrics` | Detection, alert/step matching, aggregation, and causal evaluation |
-| `experiments` | Explicit single-run and batch evaluation entry points |
-
-Reconstruction models live in `scenario_reconstructor/models`; causal graphs are
-in `scenario_reconstructor/dag.py`. `engine.py` handles network-state validation,
-`manager.py` handles stream routing and recovery, and `storage.py` handles accepted
-evidence and archives. Aggregation and text parsing have dedicated modules.
-Metrics live in the independent `metrics` package, split into detection,
-aggregation, occurrence, and causal evaluation. `metrics.MetricsCalculator`
-preserves the established class API.
-
-New code should use `ScenarioGenerator` from `scenario_generator`,
-`CaptureFlowEventConverter` from `events.conversion`, `FlowEvent` from `events`,
-and `FlowAlert`, `AttackStep`, `Precondition`,
-`RecoveryRequirement`, `ScenarioReconstructor`, and `ReconstructionManager` from
-their canonical modules. The former names and module paths remain compatibility
-aliases, and existing text log formats are unchanged. See
-[`improvement_plan/CHANGES.md`](improvement_plan/CHANGES.md) for the layout and name mapping.
-
-Tests mirror these responsibilities under `tests/models`, `tests/events`,
-`tests/generation`, `tests/graph`, `tests/reconstruction`, `tests/metrics`,
-`tests/preprocessing`, `tests/experiments`, and `tests/integration`, with shared
-factories in `tests/support.py`. Run all checks with `python -m pytest tests -q`.
-Preprocessing tests call reusable functions directly and exercise selected notebook
-wrappers/setup cells on small fixtures. Batch subprocesses are mocked; tests do not
-load real datasets or run model-training notebooks.
-
-The notebooks stay under `jupyter notebook/` to preserve their relative data paths;
-they import reusable preprocessing logic from the project root. The PCAP conversion
-notebook retains its NFStream workflow. Plotting, model comparisons, and dataset
-selection remain explicit notebook steps.
-
-Generate a scored scenario and reconstruct it with the standalone CLIs:
-
-```shell
-python -m scenario_generator -f templates.csv -o output/scenario.csv --steps-output output/actual_steps.txt --alerts-output output/actual_alerts.txt --seed 42
-python -m scenario_reconstructor -f output/scenario.csv -o output/predicted_steps.txt --alerts-output output/predicted_alerts.txt
-python -m experiments.capture -f templates.csv -t 2 -l output/metrics.txt --seed 42 --quiet
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests -q
 ```
-
-Generation supports `--normal-divisor`, `--max-steps`, `--max-search-attempts`, and
-`--max-generation-retries` (additional attempts after the initial search).
-Reconstruction supports classification thresholds, `--max-idle-gap` in seconds,
-archive paths and logging thresholds, and `--suspect-max-length`. Evaluation accepts
-both sets of options plus `--edge-recovery-threshold` and reports the mean scenario
-detection rate. Use `--help` for all options and `--quiet` to suppress stdout.
-
-Batch evaluations use `python -m experiments.batch`. Existing
-`python -m scenario_reconstructor.reconstruct_cAPTure` and `python run_scripts.py`
-commands still work. Importing a runner never starts evaluations; its `main()` must
-be called explicitly. Real-dataset execution and pipeline reintegration remain deferred.
-
-### Notebook corrections and validation
-
-Normal-flow augmentation keeps categorical tuples together, constrains nonnegative
-counters, recomputes directional totals/durations, and transforms related timestamps
-together. IPv4 filtering validates both endpoints. Capture-time shifts use date-safe
-arithmetic.
-
-The reconstruction-dataset notebook uses training-defined features/classes and holds
-out 20% of its binary training data for threshold calibration (stratified, seed 42).
-Encoding categories and the scaler are learned from the fit partition; final test
-data is used for evaluation/export. Recall-based thresholds respect the strict `>`
-comparison, including zero-recall and tied-score cases.
-
-Notebook outputs were cleared after these changes. Regenerate data and learned results
-before using them; real-dataset runs and pipeline reintegration are scheduled separately.
-
-### Alert logging, cleanup, and aggregation
-
-The reconstructor takes two log paths: `flow_exploit_log_path` and `state_log_path`.
-Aggregated exploits are no longer logged. Accepted alerts are archived as UTF-8
-JSON lines, including their attack type, alternatives, network fields, timestamps,
-and anomaly score.
-
-- `log_flow_exploits(reference_alert)` appends only new alerts from that group.
-  It does not aggregate or remove them. Calling it again without new alerts is a no-op.
-- `clean_flow_exploits(reference_alert)` releases only the successfully archived
-  prefix of that group's in-memory alerts. Unlogged alerts and derived steps remain.
-  Cleanup is explicit; periodic logging does not automatically invoke it.
-- `update_exploits(reference_alert)` and `update_exploits_all()` aggregate the full
-  accepted history, combining archived and active alerts. Logging/cleanup
-  boundaries do not define aggregation boundaries.
-- `return_flow_exploits()` exposes active alerts; `return_all_flow_exploits()` and
-  the manager's `get_results()` include archived alerts as well.
-
-The manager's `length_when_log_flow_exploits` threshold counts unlogged alerts per
-group (`-1` disables automatic logging; logging occurs when the count exceeds the
-threshold). Aggregation runs independently when results are requested.
-
-Archive batch offsets and attack definitions are retained for the current run;
-this archive is not a process-restart checkpoint. Keep archive files available
-until final results are collected. Changing log paths preserves access to earlier
-batches. `reset()` starts a fresh scenario without deleting old log records or
-including them in the new scenario.
-
-### State logging and cleanup
-
-- `log_states()` appends only unlogged snapshots as UTF-8 `NetworkState(...)`
-  lines and returns the number written. It neither clears snapshots nor changes
-  live hosts. Repeating it without new states is a no-op.
-- `clean_states()` explicitly releases only the successfully archived prefix and
-  returns the number removed. Pending snapshots remain in memory.
-- `return_states()` exposes active snapshots; `return_all_states()` restores the
-  complete current-run sequence from archived batches and pending snapshots,
-  preserving occurrence order without duplicating logged states still in memory.
-- `length_when_log_states` counts unlogged snapshots, including the initial state.
-  Logging occurs when the count exceeds the threshold; `-1` disables it. The
-  manager does not automatically clean snapshots.
-
-State snapshots own their attribute sets. Archive offsets and attribute definitions
-are retained for this run, including across log-path changes. Reset starts a fresh
-history without deleting old records. As with alert archives, files must remain
-available until full history has been retrieved; this is not a restart checkpoint.
-
-The reconstructor's keyword-only `max_idle_gap` parameter defaults to
-`timedelta(seconds=1)`. Alerts with the same attack type, source IP, and destination
-IP form a step when their intervals overlap or the next alert starts within this
-gap of the step's latest end. The boundary is inclusive. A zero gap merges only
-overlapping or touching intervals; negative gaps are rejected. There is no maximum
-step duration. Suspect recovery uses the same grouping policy and selects the group
-with the latest end, including single-alert groups. Timestamp comparisons use UTC,
-with naive timestamps treated as UTC.
-
-Alert, step, and requirement equality uses the same comparison keys as hashing.
-Individual alert identity includes both ports, protocol, timestamps, hosts, and
-attack type; anomaly scores and alternative classifications are annotations.
-Step equality includes exact size and inter-flow statistics, with `-1` treated as
-an ordinary unknown value. Approximate step matching and unknown predicted alert
-types are handled by explicit matching methods rather than equality. Requirement
-source IPs are compared as a set, independent of order and duplicates. Comparison
-timestamps use the UTC convention above. Do not mutate identity fields, including
-referenced attack definitions, while objects are stored in dictionaries or sets.
-
-### External host policy
-
-Only configured internal hosts accumulate compromise attributes. External IPs are
-observed endpoint identifiers; their preconditions use `external_host_attributes`
-as a shared baseline. Accepted outbound alerts remain evidence, but postconditions
-on external destinations are ignored and do not produce network-state transitions.
-Recovery cannot establish missing attributes on an external endpoint. Observed
-external addresses remain available as possible sources of steps affecting internal
-hosts, using only their baseline attributes.
-
-`AttackScenarioDAG(steps, tracked_host_ips=...)` infers state dependencies only from
-effects on tracked destinations. Repetition pairs and timestamp ordering remain.
-The reconstructor supplies its internal host IPs, and the runner uses the same set
-for the actual DAG. Metrics propagate an explicit policy to a step list or an
-unrestricted DAG on the other side, and reject conflicting explicit policies.
-Omitting `tracked_host_ips` preserves unrestricted standalone DAG behavior; an
-empty set disables all state dependencies while preserving repetition pairs.
-
-### Causal dependencies and repetitions
-
-Every temporal step occurrence has its own AND/OR precondition clauses. A clause
-contains all strictly earlier occurrences whose postconditions support it on the
-relevant tracked host; repeated supporters are alternatives, not mandatory links.
-The start-time policy permits overlapping flows and excludes equal-start or future
-supporters. As before, preconditions without observed supporters do not add clauses;
-roots therefore do not prove that initial preconditions were satisfied.
-
-`clause_parents_map`, `parents_map`, `children_map`, `get_adjacent_pairs()`,
-`get_causal_pairs()`, and `get_chains()` describe only state dependencies.
-`groups` retains context-grouped occurrences, and `get_repetition_pairs()` returns
-consecutive distinct occurrences within each group without adding causal edges.
-Sharing a context does not itself imply causation; a repeated occurrence can still
-be a causal supporter if its postconditions actually match a later precondition.
-
-Scenario soundness/completeness and goal-clause recovery use pure causal clauses.
-Missing a redundant supporting repetition does not increase the causal recovery
-denominator. Step precision/recall continue to measure temporal occurrence coverage,
-and alert and aggregation metrics retain their existing behavior. Public call
-signatures are preserved, but causal paths and scores no longer include synthetic
-repetition chains; callers needing repetition order should use the dedicated API.
-
-### Validated recovery
-
-The manager requires `suspect_threshold < anomaly_threshold`; equal or inverted
-thresholds raise `ValueError`. Scores at or below the suspect threshold are ignored,
-scores above it and at or below the anomaly threshold become suspects, and scores
-strictly above the anomaly threshold are validated for acceptance. Detection metrics
-use the same strict `>` anomaly boundary. Direct alert conversion also requires a
-score strictly above the suspect threshold.
-
-Recovery first creates a `RecoveryPlan` against isolated copies of the internal
-and external host state. Every supporting alert must satisfy its own preconditions
-in sequence, and the trigger must satisfy its preconditions after those effects.
-Planning does not add accepted alerts, consume suspects, record FNs, or write logs.
-Primary and alternative trigger classifications use the same validation path.
-Supporting suspects may also use a matching alternative classification. Within
-each original suspect bucket, flows matching a required type are interpreted
-uniformly as that type before temporal clustering. Each projection contributes
-its latest cluster; flows from different original buckets are evaluated separately.
-All primary-type candidates are tried before any alternative-type candidate,
-regardless of score. Within each tier, candidates are ranked by mean anomaly score
-times cluster size. Invalid primary candidates allow fallback to alternatives.
-Each proposal represents one type and host pair. Plans retain
-the original suspect references separately from interpreted alerts: acceptance
-consumes the originals and records the selected types as FNs without modifying
-the original alert objects.
-An invalid candidate does not prevent trying another candidate.
-
-Supporting alerts must start strictly before the trigger, consistent with DAG
-causality. Future alerts are excluded before temporal grouping. Supporting flows
-may overlap the trigger; validation does not require them to finish first.
-Subgoals are treated as achieved when the first supporting network flow starts.
-
-Only a fully validated sequence is committed. Unexpected errors while applying
-the sequence restore the prior host attributes, accepted-alert buffers, external
-host registrations, and state-history length. After acceptance, only the consumed
-suspect occurrences are removed and only committed supports are recorded as FNs.
-Logging occurs after the complete batch is accepted. An archive error is reported
-without discarding that accepted batch; this is not a filesystem transaction or a
-process-crash recovery mechanism. Recovery still searches the existing one-group
-proposals; this change does not introduce general multi-hop recovery.
