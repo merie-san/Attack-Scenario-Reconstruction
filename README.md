@@ -1,6 +1,6 @@
 # Attack Scenario Reconstruction
 
-A Python framework for turning isolated, noisy network intrusion alerts into explainable multi-stage attack scenarios. The project is demonstrated on the [dollar_char campaign](https://www.sciencedirect.com/science/article/pii/S1389128626005827) from the cAPTure IIoT/MQTT dataset. It provides an end-to-end workflow for preparing scored flow datasets, synthesizing multi-step attack scenarios, reconstructing attack timelines and causal graphs, and evaluating reconstruction quality.
+A Python framework for turning isolated, noisy network intrusion alerts into explainable multi-stage attack scenarios. The project is demonstrated on the [`dollar_char` campaign](https://www.sciencedirect.com/science/article/pii/S1389128626005827) from the cAPTure IIoT/MQTT dataset. It provides an end-to-end workflow for preparing scored flow datasets, synthesizing multi-step attack scenarios, reconstructing attack timelines and causal graphs, and evaluating reconstruction quality.
 
 ---
 
