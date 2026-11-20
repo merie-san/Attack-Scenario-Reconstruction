@@ -5,9 +5,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from preprocessing.augmentation import augment_normal_flows
-from preprocessing.network import filter_ipv4_flows, is_ipv4
-from preprocessing.time import shift_capture_time
-from tests.support import ProjectTestCase, SOURCE, TARGET, notebook_cells, notebook_function
+from preprocessing.network import build_mac_to_ipv4, filter_ipv4_flows, is_ipv4, resolve_ipv6_with_mac
+from preprocessing.time import load_start_time, shift_capture_time
+from tests.support import ProjectTestCase, SOURCE, TARGET, notebook_cells
 
 class TestFlowPreparation(ProjectTestCase):
     def augmentation(self):
@@ -113,15 +113,55 @@ class TestFlowPreparation(ProjectTestCase):
                              [(datetime(2025, 12, 31, 23), datetime(2025, 12, 31, 23))])
 
         with self.subTest(filename='attack_normal_merging.ipynb'):
-            load_start_time = notebook_function(
-                'attack_normal_merging.ipynb',
-                'load_start_time',
-                {'np': np, 'shift_capture_time': shift_capture_time},
-            )
+            cells = notebook_cells('attack_normal_merging.ipynb')
+            self.assertTrue(any('from preprocessing.time import load_start_time' in cell for cell in cells))
             with tempfile.TemporaryDirectory() as tmpdir:
                 npz_path = Path(tmpdir) / 'start_time.npz'
                 np.savez(npz_path, datetime=np.array(datetime(2026, 1, 1, 1), dtype=object))
                 self.assertEqual(load_start_time(npz_path), datetime(2025, 12, 31, 23))
+                fallback_path = Path(tmpdir) / 'fallback_start_time.npz'
+                np.savez(fallback_path, start=np.array(datetime(2026, 1, 1, 1), dtype=object))
+                self.assertEqual(load_start_time(fallback_path), datetime(2025, 12, 31, 23))
+
+    def test_build_mac_to_ipv4_aggregates_valid_ipv4_endpoints_and_rejects_single_frame(self):
+        first = pd.DataFrame({
+            'src_mac': ['aa:aa:aa:aa:aa:01', 'aa:aa:aa:aa:aa:02'],
+            'src_ip': [SOURCE, 'fe80::1'],
+            'dst_mac': ['bb:bb:bb:bb:bb:01', 'bb:bb:bb:bb:bb:02'],
+            'dst_ip': ['bad.host', TARGET],
+        })
+        second = pd.DataFrame({
+            'src_mac': ['cc:cc:cc:cc:cc:03'],
+            'src_ip': ['10.0.0.9'],
+            'dst_mac': ['dd:dd:dd:dd:dd:04'],
+            'dst_ip': [None],
+        })
+        self.assertEqual(
+            build_mac_to_ipv4([first, second]),
+            {
+                'aa:aa:aa:aa:aa:01': SOURCE,
+                'bb:bb:bb:bb:bb:02': TARGET,
+                'cc:cc:cc:cc:cc:03': '10.0.0.9',
+            },
+        )
+        with self.assertRaises(TypeError):
+            build_mac_to_ipv4(first)
+
+    def test_resolve_ipv6_with_mac_leaves_ipv4_and_caller_unchanged(self):
+        frame = pd.DataFrame({
+            'src_mac': ['aa:01', 'aa:02', 'aa:99'],
+            'src_ip': ['fe80::1', SOURCE, 'fe80::2'],
+            'dst_mac': ['bb:01', 'bb:99', 'bb:02'],
+            'dst_ip': [TARGET, 'fe80::3', 'fe80::4'],
+        })
+        original = frame.copy(deep=True)
+        resolved, not_found = resolve_ipv6_with_mac(
+            frame, {'aa:01': '10.0.0.11', 'bb:02': '10.0.0.22'}
+        )
+        pd.testing.assert_frame_equal(frame, original)
+        self.assertEqual(not_found, 2)
+        self.assertEqual(resolved['src_ip'].tolist(), ['10.0.0.11', SOURCE, 'fe80::2'])
+        self.assertEqual(resolved['dst_ip'].tolist(), [TARGET, 'fe80::3', '10.0.0.22'])
 
     def test_packet_totals_zero_directions_and_recomputed_durations(self):
         frame = self.normal_frame()

@@ -67,6 +67,14 @@ def calibrate_threshold(predictor, features, labels, recall):
     return threshold
 
 
+def report_calibrated_threshold(predictor, X_validation, y_validation, recall, name=None) -> float:
+    """Calibrate and print a validation recall threshold."""
+    threshold = calibrate_threshold(predictor, X_validation, y_validation, recall)
+    prefix = f"{name} " if name else ""
+    print(f"{prefix}computed threshold (recall={recall}): {threshold:.6f}")
+    return threshold
+
+
 def split_training_validation(train, attack_labels, *, test_size=0.2, random_state=42):
     """Reserve a reproducible binary-stratified validation partition before fitting."""
     return train_test_split(train, test_size=test_size, random_state=random_state,

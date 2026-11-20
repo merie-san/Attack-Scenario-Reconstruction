@@ -11,9 +11,8 @@ from unittest.mock import Mock
 import numpy as np
 import pandas as pd
 
-from preprocessing.augmentation import EXCLUDED_FEATURE_KEYWORDS, augment_normal_flows
 from preprocessing.time import absolute_flow_time
-from tests.support import ProjectTestCase, REPO_ROOT, notebook_cells, notebook_function
+from tests.support import ProjectTestCase, REPO_ROOT, notebook_cells
 
 
 class TestNotebookHelpers(ProjectTestCase):
@@ -97,16 +96,68 @@ class TestNotebookHelpers(ProjectTestCase):
         self.assertEqual(updated.loc[0, 'step_number'], -1)
         self.assertNotEqual(updated.loc[1, 'step_number'], updated.loc[2, 'step_number'])
 
-    def test_augmentation_wrapper_delegates_to_shared_implementation(self):
-        namespace = {'augment_normal_flows': augment_normal_flows,
-                     'keywords_excluded': EXCLUDED_FEATURE_KEYWORDS}
-        wrapper = notebook_function('attack_normal_merging.ipynb', 'generate_dataframe', namespace)
-        frame = pd.DataFrame({'bidirectional_first_seen_ms': [100, 200],
-                              'bidirectional_last_seen_ms': [110, 210]})
-        state = np.random.get_state()
-        expected = augment_normal_flows(frame, 5000, 2)
-        np.random.set_state(state)
-        pd.testing.assert_frame_equal(wrapper(frame, 5000, 2), expected)
+    def test_augmentation_calls_shared_implementation_directly(self):
+        cells = notebook_cells('attack_normal_merging.ipynb')
+        imports = [source for source in cells if 'from preprocessing.augmentation import augment_normal_flows' in source]
+        self.assertTrue(imports)
+        call_cells = [source for source in cells if 'augment_normal_flows(' in source]
+        self.assertEqual(len(call_cells), 2)
+        self.assertFalse(any('def generate_dataframe' in source for source in cells))
+
+    def test_notebooks_define_no_local_helper_functions(self):
+        for path in sorted((REPO_ROOT / 'jupyter notebook').glob('*.ipynb')):
+            for index, source in enumerate(notebook_cells(path.name)):
+                with self.subTest(notebook=path.name, code_cell=index):
+                    tree = ast.parse(source, filename=f'{path.name}:code_cell_{index}')
+                    defs = [
+                        node.name for node in ast.walk(tree)
+                        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    ]
+                    self.assertEqual(defs, [])
+
+    def test_notebooks_import_shared_preprocessing_helpers(self):
+        expected = {
+            'convert_to_csv.ipynb': {
+                ('preprocessing.datasets', 'get_subdirs'),
+            },
+            'process_attack_campaigns.ipynb': {
+                ('preprocessing.time', 'shift_capture_time'),
+                ('preprocessing.time', 'absolute_flow_time'),
+                ('preprocessing.datasets', 'summarize_labeled_flows'),
+            },
+            'attack_normal_merging.ipynb': {
+                ('preprocessing.network', 'build_mac_to_ipv4'),
+                ('preprocessing.network', 'resolve_ipv6_with_mac'),
+                ('preprocessing.network', 'filter_ipv4_flows'),
+                ('preprocessing.augmentation', 'EXCLUDED_FEATURE_KEYWORDS'),
+                ('preprocessing.augmentation', 'augment_normal_flows'),
+                ('preprocessing.time', 'absolute_flow_time'),
+                ('preprocessing.time', 'load_start_time'),
+            },
+            'reconstruction_dataset_creation.ipynb': {
+                ('preprocessing.training', 'align_test_schema'),
+                ('preprocessing.training', 'filter_known_test_classes'),
+                ('preprocessing.training', 'encode_binary_labels'),
+                ('preprocessing.training', 'apply_label_encoding'),
+                ('preprocessing.training', 'split_training_validation'),
+                ('preprocessing.training', 'report_calibrated_threshold'),
+                ('preprocessing.evaluation', 'evaluate_classifier'),
+                ('preprocessing.evaluation', 'plot_roc_curve'),
+                ('preprocessing.evaluation', 'plot_prc_curve'),
+                ('preprocessing.evaluation', 'evaluate_mappers'),
+                ('preprocessing.evaluation', 'plot_mapper_roc_curves'),
+                ('preprocessing.evaluation', 'plot_mapper_prc_curves'),
+            },
+        }
+        for filename, required_imports in expected.items():
+            with self.subTest(filename=filename):
+                found = set()
+                for source in notebook_cells(filename):
+                    for node in ast.walk(ast.parse(source)):
+                        if isinstance(node, ast.ImportFrom) and node.module:
+                            for alias in node.names:
+                                found.add((node.module, alias.name))
+                self.assertTrue(required_imports <= found, f'Missing in {filename}: {required_imports - found}')
 
     def test_absolute_time_notebook_aliases_use_shared_utc_conversion(self):
         for filename in ('process_attack_campaigns.ipynb', 'attack_normal_merging.ipynb'):

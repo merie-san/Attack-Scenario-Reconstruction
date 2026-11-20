@@ -3,17 +3,13 @@ import contextlib
 import io
 import numpy as np
 import pandas as pd
-from sklearn.metrics import precision_recall_curve
 from preprocessing.training import (align_test_schema, apply_label_encoding,
                                     calibrate_threshold, encode_binary_labels,
-                                    filter_known_test_classes, split_training_validation)
-from tests.support import ProjectTestCase, notebook_cells, notebook_function
+                                    filter_known_test_classes, report_calibrated_threshold,
+                                    split_training_validation)
+from tests.support import ProjectTestCase, notebook_cells
 
 class TestTrainingPreparation(ProjectTestCase):
-    def threshold_function(self, namespace):
-        namespace['calibrate_threshold'] = calibrate_threshold
-        return notebook_function('reconstruction_dataset_creation.ipynb', 'compute_thresh', namespace)
-
     def training_function(self, name):
         return {'align_test_schema': align_test_schema,
                 'filter_known_test_classes': filter_known_test_classes}[name]
@@ -32,31 +28,35 @@ class TestTrainingPreparation(ProjectTestCase):
         pd.testing.assert_frame_equal(train, original)
 
     def test_B26_threshold_selection_does_not_inspect_final_test_features(self):
-        holdout = object()
-        namespace = {'np': np, 'precision_recall_curve': precision_recall_curve,
-                     'X_test': holdout, 'y_test': np.array([0, 1, 0, 1]),
-                     'X_validation': object(), 'y_validation': np.array([0, 1, 0, 1])}
+        validation = object()
+        labels = np.array([0, 1, 0, 1])
         case = self
 
         class Predictor:
             def predict_proba(self, data):
-                case.assertIsNot(data, holdout, 'BUG-26: threshold tuning must not inspect the final holdout')
+                case.assertIs(data, validation, 'BUG-26: threshold tuning must use the validation partition only')
                 return np.array([[0.9, 0.1], [0.2, 0.8], [0.7, 0.3], [0.1, 0.9]])
 
-        with contextlib.redirect_stdout(io.StringIO()):
-            self.threshold_function(namespace)(Predictor(), 0.8)
+        cells = notebook_cells('reconstruction_dataset_creation.ipynb')
+        self.assertTrue(any('from preprocessing.training import report_calibrated_threshold' in c for c in cells))
+        call_cell = next(c for c in cells if 'report_calibrated_threshold(' in c)
+        self.assertIn('X_validation, y_validation', call_cell)
+        self.assertNotIn('X_test', call_cell)
+        with contextlib.redirect_stdout(io.StringIO()) as stdout:
+            threshold = report_calibrated_threshold(Predictor(), validation, labels, 0.8, name='xgb')
+        self.assertIn('xgb computed threshold (recall=0.8):', stdout.getvalue())
+        self.assertAlmostEqual(threshold, np.nextafter(0.8, -np.inf))
 
     def test_B26_zero_recall_target_does_not_index_past_thresholds(self):
-        namespace = {'np': np, 'precision_recall_curve': precision_recall_curve,
-                     'X_test': object(), 'y_test': np.array([0, 1]),
-                     'X_validation': object(), 'y_validation': np.array([0, 1])}
+        validation = object()
+        labels = np.array([0, 1])
 
         class Predictor:
             def predict_proba(self, data):
                 return np.array([[0.9, 0.1], [0.1, 0.9]])
 
         with contextlib.redirect_stdout(io.StringIO()):
-            self.threshold_function(namespace)(Predictor(), 0.0)
+            self.assertEqual(report_calibrated_threshold(Predictor(), validation, labels, 0.0), 0.9)
 
     def test_test_features_follow_training_order_and_preserve_metadata(self):
         train = pd.DataFrame({'label': ['discover'], 'feature': [1]})
@@ -98,10 +98,9 @@ class TestTrainingPreparation(ProjectTestCase):
                 case.assertIs(data, validation)
                 return np.column_stack([1 - scores, scores])
 
-        compute = self.threshold_function({'np': np, 'X_validation': validation, 'y_validation': labels})
         for recall in (0.0, 0.5, 1.0):
             with self.subTest(recall=recall), contextlib.redirect_stdout(io.StringIO()):
-                threshold = compute(Predictor(), recall)
+                threshold = report_calibrated_threshold(Predictor(), validation, labels, recall)
                 predictions = scores > threshold
                 if recall == 0:
                     self.assertFalse(predictions.any())
