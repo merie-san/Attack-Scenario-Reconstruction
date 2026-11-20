@@ -1,12 +1,13 @@
 """Normal-flow augmentation, endpoint filtering, and notebook wiring."""
-import ast
+import tempfile
 from datetime import datetime
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from preprocessing.augmentation import augment_normal_flows
 from preprocessing.network import filter_ipv4_flows, is_ipv4
 from preprocessing.time import shift_capture_time
-from tests.support import ProjectTestCase, SOURCE, TARGET, notebook_cells
+from tests.support import ProjectTestCase, SOURCE, TARGET, notebook_cells, notebook_function
 
 class TestFlowPreparation(ProjectTestCase):
     def augmentation(self):
@@ -51,18 +52,28 @@ class TestFlowPreparation(ProjectTestCase):
     def test_B24_ipv4_filter_rejects_ipv6_source(self):
         frame = pd.DataFrame({'src_ip': [SOURCE, 'fe80::1', SOURCE],
                               'dst_ip': [TARGET, TARGET, 'fe80::2']})
-        namespace = {'attack_test': frame.copy(), 'attack_train': frame.copy(),
-                     'filter_ipv4_flows': filter_ipv4_flows}
-        for source in notebook_cells('attack_normal_merging.ipynb'):
-            for node in ast.parse(source).body:
-                if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)
-                        and any(isinstance(target, ast.Name) and target.id == 'attack_test' for target in node.targets)
-                        and 'filter_ipv4_flows' in ast.unparse(node.value)):
-                    exec(compile(ast.Module(body=[node], type_ignores=[]), '<real IPv4 filter>', 'exec'), namespace)
-                    self.assertEqual(namespace['attack_test'].index.tolist(), [0],
-                                     'BUG-24: a regex dot matches an unresolved IPv6 source')
-                    return
-        self.fail('Notebook must apply its IPv4 helper to both flow endpoints')
+        cells = notebook_cells('attack_normal_merging.ipynb')
+        normal_cell = next(source for source in cells
+                           if 'normal_test_ipv4' in source and 'filter_ipv4_flows' in source)
+        attack_cell = next(source for source in cells
+                           if 'attack_df_ipv4_list' in source and 'filter_ipv4_flows' in source)
+        namespace = {
+            'normal_train_mapped': frame.copy(),
+            'normal_test_mapped': frame.copy(),
+            'attack_df_mapped_list': [(frame.copy(), frame.copy())],
+            'filter_ipv4_flows': filter_ipv4_flows,
+        }
+        exec(compile(normal_cell, 'attack_normal_merging.ipynb', 'exec'), namespace)
+        exec(compile(attack_cell, 'attack_normal_merging.ipynb', 'exec'), namespace)
+        self.assertEqual(namespace['normal_train_ipv4'].index.tolist(), [0],
+                         'BUG-24: a regex dot matches an unresolved IPv6 source')
+        self.assertEqual(namespace['normal_test_ipv4'].index.tolist(), [0],
+                         'BUG-24: a regex dot matches an unresolved IPv6 source')
+        train_ipv4, test_ipv4 = namespace['attack_df_ipv4_list'][0]
+        self.assertEqual(train_ipv4.index.tolist(), [0],
+                         'BUG-24: a regex dot matches an unresolved IPv6 source')
+        self.assertEqual(test_ipv4.index.tolist(), [0],
+                         'BUG-24: a regex dot matches an unresolved IPv6 source')
 
     def test_B25_compression_is_invariant_to_timestamp_origin(self):
         frame = self.normal_frame()
@@ -90,15 +101,27 @@ class TestFlowPreparation(ProjectTestCase):
         )
 
     def test_B25_capture_time_conversion_handles_midnight_rollover(self):
-        for filename in ('process_attack_train.ipynb', 'process_attack_test.ipynb', 'attack_normal_merging.ipynb'):
-            with self.subTest(filename=filename):
-                namespace = {'shift_capture_time': shift_capture_time, 'start_time': np.array(datetime(2026, 1, 1, 1), dtype=object)}
-                assignments = [node for source in notebook_cells(filename) for node in ast.parse(source).body
-                               if isinstance(node, ast.Assign) and 'shift_capture_time' in ast.unparse(node.value)
-                               and any(isinstance(target, ast.Name) and target.id == 'start_time' for target in node.targets)]
-                self.assertEqual(len(assignments), 1)
-                value = eval(compile(ast.Expression(assignments[0].value), '<capture time conversion>', 'eval'), namespace)
-                self.assertEqual(value, datetime(2025, 12, 31, 23))
+        with self.subTest(filename='process_attack_campaigns.ipynb'):
+            cells = notebook_cells('process_attack_campaigns.ipynb')
+            cell = next(source for source in cells
+                        if 'shift_capture_time' in source and 'start_time_list' in source)
+            start_obj = np.array(datetime(2026, 1, 1, 1), dtype=object)
+            namespace = {'shift_capture_time': shift_capture_time,
+                         'start_time_list': [(start_obj, start_obj)]}
+            exec(compile(cell, 'process_attack_campaigns.ipynb', 'exec'), namespace)
+            self.assertEqual(namespace['start_time_list'],
+                             [(datetime(2025, 12, 31, 23), datetime(2025, 12, 31, 23))])
+
+        with self.subTest(filename='attack_normal_merging.ipynb'):
+            load_start_time = notebook_function(
+                'attack_normal_merging.ipynb',
+                'load_start_time',
+                {'np': np, 'shift_capture_time': shift_capture_time},
+            )
+            with tempfile.TemporaryDirectory() as tmpdir:
+                npz_path = Path(tmpdir) / 'start_time.npz'
+                np.savez(npz_path, datetime=np.array(datetime(2026, 1, 1, 1), dtype=object))
+                self.assertEqual(load_start_time(npz_path), datetime(2025, 12, 31, 23))
 
     def test_packet_totals_zero_directions_and_recomputed_durations(self):
         frame = self.normal_frame()

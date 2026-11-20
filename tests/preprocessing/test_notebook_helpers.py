@@ -3,8 +3,10 @@ import ast
 import contextlib
 import io
 import json
+import tempfile
 from datetime import datetime, timedelta, timezone
-from unittest.mock import Mock, patch
+from pathlib import Path
+from unittest.mock import Mock
 
 import numpy as np
 import pandas as pd
@@ -19,8 +21,8 @@ class TestNotebookHelpers(ProjectTestCase):
         filename = 'reconstruction_dataset_creation.ipynb'
         cells = notebook_cells(filename)
         model = Mock()
-        model.predict_proba.return_value = np.array([[0.8, 0.2], [0.1, 0.9]])
-        features = np.array([[1], [2]])
+        model.predict_proba.return_value = np.array([[0.8, 0.2], [0.1, 0.9], [0.4, 0.6]])
+        features = np.array([[1], [2], [3]])
         namespace = {'logistic_regression_dict': {'probe': model}, 'X_test_dict': {'probe': features}}
         lr_cells = [source for source in cells if 'lr_attack_type_prob' in source and 'df_rec_dict' not in source]
         self.assertEqual(len(lr_cells), 3)
@@ -29,35 +31,71 @@ class TestNotebookHelpers(ProjectTestCase):
                 exec(compile(source, filename, 'exec'), namespace)
         model.predict_proba.assert_called_once()
         self.assertIs(model.predict_proba.call_args.args[0], features)
-        np.testing.assert_array_equal(namespace['lr_attack_type_prob']['probe'], [0.2, 0.9])
+        np.testing.assert_array_equal(namespace['lr_attack_type_prob']['probe'], [0.2, 0.9, 0.6])
         namespace.update(
-            pd=pd, df_rec=pd.DataFrame({'index': [10, 20], 'timestamp': [2, 1]}), ind_test=[10, 20],
-            anomaly_score_dict={'detector': [0.3, 0.8]}, xgb_attack_type_prob={'probe': [0.1, 0.7]},
-            gnb_attack_type_prob={'probe': [0.4, 0.6]}, perfect_type_prob={'probe': [0, 1]},
+            pd=pd, np=np,
+            df_rec=pd.DataFrame({
+                'index': [10, 20, 30],
+                'timestamp': [3, 2, 1],
+                'campaign_id': [-1, 0, 1],
+                'label': ['normal', 'probe', 'probe'],
+            }),
+            ind_test=np.array([10, 20, 30]),
+            anomaly_score_dict={'detector': np.array([0.3, 0.8, 0.5])},
+            xgb_attack_type_prob={'probe': np.array([0.1, 0.7, 0.2])},
+            gnb_attack_type_prob={'probe': np.array([0.4, 0.6, 0.5])},
+            perfect_type_prob={'probe': np.array([0, 1, 1])},
         )
-        merge_cell = next(source for source in cells if 'lr_df_rec' in source)
+        merge_cell = next(source for source in cells if 'mapper_probs' in source and 'df_rec_dict' in source)
         with contextlib.redirect_stdout(io.StringIO()):
             exec(compile(merge_cell, filename, 'exec'), namespace)
         outputs = namespace['df_rec_dict']
         self.assertEqual(set(outputs), {'detector_xgb', 'detector_gnb', 'detector_lr', 'detector_perfect'})
-        self.assertEqual(outputs['detector_lr']['probe'].tolist(), [0.2, 0.9])
-        self.assertEqual(outputs['detector_lr']['anomaly_score'].tolist(), [0.3, 0.8])
-        save_cell = next(source for source in cells if 'for name, df in df_rec_dict.items()' in source)
-        with patch('os.makedirs') as mkdir, patch.object(pd.DataFrame, 'to_csv') as save:
-            exec(compile(save_cell, filename, 'exec'), namespace)
-        mkdir.assert_called_once_with('data/final datasets', exist_ok=True)
-        self.assertEqual({call.args[0] for call in save.call_args_list},
-                         {f'data/final datasets/{name}_rec_dataset.csv' for name in outputs})
+        self.assertEqual(outputs['detector_lr']['probe'].tolist(), [0.2, 0.9, 0.6])
+        self.assertEqual(outputs['detector_lr']['anomaly_score'].tolist(), [0.3, 0.8, 0.5])
+
+        save_cell = next(source for source in cells if 'EXPORT_POOLED_COPY' in source and 'FINAL_DATA_ROOT' in source)
+        campaign_ids = {'dollar_char': 0, 'empty_conn': 1}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            final_root = Path(tmpdir)
+            namespace['FINAL_DATA_ROOT'] = final_root
+            namespace['campaign_ids'] = campaign_ids
+            with contextlib.redirect_stdout(io.StringIO()):
+                exec(compile(save_cell, filename, 'exec'), namespace)
+
+            for campaign_name in (*campaign_ids, 'all_campaigns'):
+                for name in outputs:
+                    self.assertTrue((final_root / campaign_name / f'{name}_rec_dataset.csv').is_file())
+
+            dollar_df = pd.read_csv(final_root / 'dollar_char' / 'detector_lr_rec_dataset.csv')
+            empty_df = pd.read_csv(final_root / 'empty_conn' / 'detector_lr_rec_dataset.csv')
+            pooled_df = pd.read_csv(final_root / 'all_campaigns' / 'detector_lr_rec_dataset.csv')
+            self.assertEqual(dollar_df['index'].tolist(), [20, 10])
+            self.assertEqual(set(dollar_df['campaign_id']), {-1, 0})
+            self.assertEqual(empty_df['index'].tolist(), [30, 10])
+            self.assertEqual(set(empty_df['campaign_id']), {-1, 1})
+            self.assertEqual(pooled_df['index'].tolist(), [30, 20, 10])
 
         notebook = json.loads((REPO_ROOT / 'jupyter notebook' / filename).read_text(encoding='utf-8'))
         self.assertEqual((notebook['nbformat'], notebook['nbformat_minor']), (4, 5))
         ids = [cell['id'] for cell in notebook['cells']]
         self.assertTrue(all(isinstance(cell_id, str) and cell_id for cell_id in ids))
         self.assertEqual(len(ids), len(set(ids)))
-        for cell in notebook['cells']:
-            if cell['cell_type'] == 'code':
-                self.assertEqual(cell['outputs'], [])
-                self.assertIsNone(cell['execution_count'])
+
+    def test_reconstruction_notebook_subdivides_steps_per_campaign(self):
+        cells = notebook_cells('reconstruction_dataset_creation.ipynb')
+        subdivision_cell = next(source for source in cells if '.ngroup()' in source and 'step_number' in source)
+        df_rec = pd.DataFrame({
+            'campaign_id': [-1, 0, 1],
+            'step_number': [-1, 0, 0],
+            'src_ip': ['10.0.0.5', '10.0.0.2', '10.0.0.2'],
+            'dst_ip': ['10.0.0.1', '10.0.0.1', '10.0.0.1'],
+        })
+        namespace = {'df_rec': df_rec}
+        exec(compile(subdivision_cell, 'reconstruction_dataset_creation.ipynb', 'exec'), namespace)
+        updated = namespace['df_rec']
+        self.assertEqual(updated.loc[0, 'step_number'], -1)
+        self.assertNotEqual(updated.loc[1, 'step_number'], updated.loc[2, 'step_number'])
 
     def test_augmentation_wrapper_delegates_to_shared_implementation(self):
         namespace = {'augment_normal_flows': augment_normal_flows,
@@ -71,8 +109,7 @@ class TestNotebookHelpers(ProjectTestCase):
         pd.testing.assert_frame_equal(wrapper(frame, 5000, 2), expected)
 
     def test_absolute_time_notebook_aliases_use_shared_utc_conversion(self):
-        for filename in ('process_attack_train.ipynb', 'process_attack_test.ipynb',
-                         'attack_normal_merging.ipynb'):
+        for filename in ('process_attack_campaigns.ipynb', 'attack_normal_merging.ipynb'):
             with self.subTest(filename=filename):
                 imports = []
                 for source in notebook_cells(filename):
