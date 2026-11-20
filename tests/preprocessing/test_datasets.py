@@ -46,3 +46,30 @@ class TestDatasetsHelpers(ProjectTestCase):
         self.assertAlmostEqual(by_label.loc['scan', 'avg_fps'], 1.0)
         self.assertEqual(by_label.loc['exploit', 'total_flws'], 1)
         self.assertTrue(pd.isna(by_label.loc['exploit', 'avg_fps']))
+
+    def test_summarize_labeled_flows_uses_flow_duration_for_step_end_time(self):
+        t0 = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        frame = pd.DataFrame({
+            'step_number': [1, 1, 2],
+            'label': ['scan', 'scan', 'exploit'],
+            'phase_name': ['DISCOVERY', 'DISCOVERY', 'EXPLOIT'],
+            'phase_number': [0, 0, 1],
+            'timestamp': [t0, t0 + timedelta(seconds=1), t0 + timedelta(seconds=10)],
+            'bidirectional_duration_ms': [5000, 100, 200],
+        })
+
+        sorted_df, step_summary, label_summary = summarize_labeled_flows(frame)
+
+        self.assertEqual(sorted_df.columns.tolist(), frame.columns.tolist())
+        by_step = step_summary.set_index('step_number')
+        self.assertEqual(by_step.loc[1, 'start_time'], t0)
+        self.assertEqual(by_step.loc[1, 'end_time'], t0 + timedelta(seconds=5))
+        self.assertEqual(by_step.loc[1, 'duration'], timedelta(seconds=5))
+        self.assertEqual(by_step.loc[2, 'start_time'], t0 + timedelta(seconds=10))
+        self.assertEqual(by_step.loc[2, 'end_time'], t0 + timedelta(seconds=10, milliseconds=200))
+        self.assertEqual(by_step.loc[2, 'duration'], timedelta(milliseconds=200))
+        self.assertAlmostEqual(by_step.loc[2, 'fps'], 5.0)
+
+        by_label = label_summary.set_index('label')
+        self.assertEqual(by_label.loc['exploit', 'avg_duration'], timedelta(milliseconds=200))
+        self.assertAlmostEqual(by_label.loc['exploit', 'avg_fps'], 5.0)

@@ -5,6 +5,7 @@ from datetime import timedelta
 import pandas as pd
 
 from events.conversion import CaptureFlowEventConverter
+from experiments.policy import load_policy_config
 from experiments.reporting import IterationRecord, parse_dataset_metadata, write_evaluation_outputs
 from metrics import MetricsCalculator
 from scenario_generator import ScenarioGenerator
@@ -23,9 +24,14 @@ from scenario_reconstructor.manager import ReconstructionManager
 
 
 def main(argv=None):
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--policy-config", default=None)
+    pre_args, _ = pre_parser.parse_known_args(argv)
+
     parser = argparse.ArgumentParser(prog="reconstructScenario",
                                      description="Run the cAPTure evaluation experiment (scenario generation, reconstruction, and metric collection) on a cAPTure-structured flow dataset CSV")
     parser.add_argument("-f", "--file", required=True, help="path to input scored/labeled flow dataset CSV")
+    parser.add_argument("--policy-config", default=None, help="path to JSON reconstruction policy config file")
     add_config_argument(parser)
     parser.add_argument(
         "-t", "--times", help="number of evaluation cycles", default=100, type=int)
@@ -36,6 +42,11 @@ def main(argv=None):
     add_generation_arguments(parser, normal_divisor=10)
     add_reconstruction_arguments(parser)
     parser.add_argument("--edge-recovery-threshold", type=float, default=0.8)
+    if pre_args.policy_config is not None:
+        try:
+            parser.set_defaults(**load_policy_config(pre_args.policy_config, scope="capture"))
+        except ValueError as exc:
+            parser.error(str(exc))
     args = parser.parse_args(argv)
     validate_generation_arguments(parser, args)
     validate_reconstruction_arguments(parser, args)

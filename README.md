@@ -27,18 +27,18 @@ Traditional intrusion detection systems inspect network flows one by one. In pra
 
 ```text
 Attack-Scenario-Reconstruction/
-├── jupyter notebook/        # Notebooks for PCAP conversion, labeling, and ML scoring
-├── preprocessing/           # Reusable augmentation, IPv4 filtering, time, and calibration helpers
+├── jupyter notebook/        # Notebooks for PCAP conversion, multi-campaign labeling, and ML scoring
+├── preprocessing/           # Reusable datasets, evaluation/plotting, MAC/IPv4, UTC time, augmentation, and training helpers
 ├── scenario_configs/        # Built-in cAPTure campaign definition and .py/.json config loader
 ├── scenario_generator/      # Synthetic scenario synthesis and CLI (`python -m scenario_generator`)
 ├── events/                  # Conversion from scored flow CSVs into UTC FlowEvent streams
 ├── scenario_reconstructor/  # State engine, FN recovery, aggregation, DAG, and CLI (`python -m scenario_reconstructor`)
 ├── metrics/                 # Four-stage evaluation suite (`MetricsCalculator`)
-├── experiments/             # Runners for the cAPTure evaluation benchmark (`experiments.capture`, `experiments.batch`)
+├── experiments/             # Benchmark runners (`capture`, `batch`, `reporting`), policy loader (`policy`), and JSON configs (`configs/`)
 └── tests/                   # Unit, regression, and integration tests
 ```
 
-*(Note: `improvement_plan/CHANGES.md` records historical design decisions and version updates; `AGENTS.md` documents architectural invariants for developers and coding agents.)*
+*(Note: `AGENTS.md` documents architectural invariants, package boundaries, and verification commands for developers and coding agents.)*
 
 ---
 
@@ -58,10 +58,13 @@ pip install -r requirements.txt
 
 Both the generator and reconstructor read **labeled/scored flow dataset CSVs**. Each row represents a network flow with these columns:
 
-- **Flow metadata & labels:** `src_ip`, `src_port`, `dst_ip`, `dst_port`, `protocol`, `timestamp`, `duration` (ms), `label` (`"normal"` for background traffic, or an attack name), and `step_number` (`-1` for `"normal"`, or an integer ID grouping flows belonging to the same attack execution).
+- **Flow metadata & labels:** `src_ip`, `src_port`, `dst_ip`, `dst_port`, `protocol`, `timestamp`, `duration` (ms), `label` (`"normal"` for background traffic, or an attack name), `step_number` (`-1` for `"normal"`, or an integer ID grouping flows belonging to the same attack execution), and optional `campaign_id` (`-1` for `"normal"`, or `0..N-1` per attack campaign in multi-campaign exports).
 - **Detector & classifier scores:** `anomaly_score` in `[0, 1]`, plus one score column per configured attack type (for the built-in `capture` campaign: `nmap_10_T5`, `nmap_mqtt`, `nmap_banner`, `brute_force_malformed`, `dollar_char`, `scp_inst`).
 
-You can generate these scored CSVs from raw cAPTure traffic by running the notebooks in `jupyter notebook/` in order (`convert_to_csv.ipynb` → `process_attack_train.ipynb` & `process_attack_test.ipynb` → `attack_normal_merging.ipynb` → `reconstruction_dataset_creation.ipynb`).
+You can generate these scored CSVs from raw cAPTure traffic by running the notebooks in `jupyter notebook/` in order (`convert_to_csv.ipynb` → `process_attack_campaigns.ipynb` → `attack_normal_merging.ipynb` → `reconstruction_dataset_creation.ipynb`), which outputs under `data/cAPTure/`:
+- `merged/` (`train.csv`, `test.csv`, and augmented normal sets)
+- `ml/` (`ML_train.csv`, `ML_test.csv`, `calibrated_thresholds.json`, and `plots/`)
+- `final_datasets/<campaign_name>/` (per-campaign `{anomaly}_{mapper}_rec_dataset.csv` template sets) and `final_datasets/all_campaigns/` (pooled multi-campaign copy).
 
 ---
 
@@ -167,18 +170,19 @@ Key reconstruction parameters:
 
 ### Step 5: Run the cAPTure Evaluation Experiments
 
-To reproduce the multi-cycle cAPTure dataset benchmark (repeatedly generating scenarios from a cAPTure-structured dataset, reconstructing them, and averaging all evaluation metrics):
+To reproduce the multi-cycle cAPTure dataset benchmark (repeatedly generating scenarios from a cAPTure-structured dataset, reconstructing them, and averaging all evaluation metrics), pass reconstruction policy arguments directly or load them from a JSON file via `--policy-config` (explicit CLI flags override policy file values):
 
-```powershell
-python -m experiments.capture `
-  -f data/final_dataset.csv `
-  -t 100 `
-  -l output/capture_metrics.txt `
-  --anomaly-threshold 0.8 `
-  --suspect-threshold 0.4 `
-  --type-threshold 0.2 `
-  --edge-recovery-threshold 0.8 `
-  --seed 42 `
+```bash
+python -m experiments.capture \
+  -f data/cAPTure/final_datasets/dollar_char/xgb_xgb_rec_dataset.csv \
+  --policy-config experiments/configs/dollar_char_policy.json \
+  -t 100 \
+  -l output/capture_metrics.txt \
+  --anomaly-threshold 0.8 \
+  --suspect-threshold 0.4 \
+  --type-threshold 0.2 \
+  --edge-recovery-threshold 0.8 \
+  --seed 42 \
   --quiet
 ```
 
@@ -186,18 +190,26 @@ This writes mean confusion matrices, alert precision/recall, step aggregation so
 
 Each evaluation also writes `*_iterations.csv` (one row per cycle, numbered from zero) and `*_summary.csv` (one row per run). Iteration rows contain actual/predicted step and alert counts, recovered false negatives, rejected false positives, and all four metric layers. Summary rows contain the mean and population standard deviation (`ddof=0`) of each numeric metric and count. Both CSVs include dataset filename, detector/mapper names parsed from the filename, configuration, thresholds, idle gap, seed, and cycle count. Use `--iterations-csv <path>` and `--summary-csv <path>` to override the default paths beside the text log; parent directories are created automatically.
 
-To run the full benchmark grid across all preconfigured model combinations and thresholds in `experiments/batch.py`:
+To run the benchmark grid across configured datasets and thresholds via `experiments.batch` (or the compatibility wrapper `run_scripts.py`), using default paths `./data/cAPTure/final_datasets/dollar_char/` and `./data/cAPTure/results/dollar_char/`:
 
-```powershell
+```bash
+# Run with default 48-job grid
 python -m experiments.batch
+
+# Or run a customized subset driven by a JSON policy config (CLI flags override file settings)
+python run_scripts.py \
+  --policy-config experiments/configs/dollar_char_policy.json \
+  --datasets perfect_perfect \
+  --times 10 \
+  --workers 4
 ```
 
-Batch runs keep the configured 48-job grid, use `--seed 42` by default, and combine available CSVs only from jobs that exited successfully in the current batch into `batch_summary.csv` and `batch_iterations.csv`. A new batch removes the previous two combined reports before dispatch; if all jobs fail, no combined reports remain. Failed-job files are preserved for diagnosis and excluded from automatic batch aggregation, including partially written reports. Use `--seed 7` to change the seed, `--no-seed` to disable seeding, `--quiet` to suppress progress, and `--results-dir <directory>` to choose the location for run logs and aggregate CSVs.
+`experiments.batch` supports `--policy-config`, `--dataset-dir`, `--results-dir`, `-c`/`--config`, `-t`/`--times`, `--workers` (concurrent subprocesses with deterministic aggregation order), `--datasets`, `--detectors` (or `all`), `--mappers` (or `all`), `--resume` (skips jobs with non-empty `_summary.csv` and `_iterations.csv`), `--seed` / `--no-seed`, `--quiet`, and policy overrides (`--anomaly-thresholds`, `--suspect-thresholds`, `--type-threshold`, `--suspect-max-length`, `--log-flow-exploits-threshold`, `--log-states-threshold`, `--max-idle-gap`, `--edge-recovery-threshold`, `--normal-divisor`). Combined `batch_summary.csv` and `batch_iterations.csv` include only jobs that succeeded or resumed in the current run; failed-job files are preserved for diagnosis and excluded from automatic batch aggregation.
 
 `experiments/reporting.py` provides the reusable CSV/text writers and batch aggregation API. Rebuild the aggregate CSVs from existing run CSVs without rerunning evaluations:
 
-```powershell
-python -m experiments.reporting -d "data/result logs"
+```bash
+python -m experiments.reporting -d "data/cAPTure/results/dollar_char"
 ```
 
 This standalone rebuild discovers available CSVs without knowing which jobs succeeded; use it on a curated set of run files. Aggregation skips missing files, excludes the master CSVs from discovery, and creates no directories or files when no run CSVs exist.
@@ -263,6 +275,10 @@ print("Goal Detected:",
 
 To verify the entire framework:
 
-```powershell
-.\.venv\Scripts\python.exe -m pytest tests -q
+```bash
+# Via unittest (works with standard library only; -t . keeps top-level packages on sys.path)
+python -m unittest discover -s tests -t . -q
+
+# Or via pytest (if installed in your environment)
+python -m pytest tests -q
 ```

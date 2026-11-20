@@ -4,7 +4,7 @@
 
 **Attack Scenario Reconstruction** is a Python research codebase implementing an end-to-end pipeline for transforming isolated network-flow intrusion alerts into explainable multi-step attack scenarios and evaluating reconstruction quality across four orthogonal stages:
 
-1. **Dataset Preprocessing & ML Scoring (`preprocessing/`, `jupyter notebook/`)**: Augments normal traffic, filters endpoints, aligns train/test schemas, trains binary anomaly detectors and per-attack classifiers, and calibrates detection thresholds on a stratified validation holdout.
+1. **Dataset Preprocessing & ML Scoring (`preprocessing/`, `jupyter notebook/`)**: Converts PCAPs to flows, labels multiple attack campaigns (`process_attack_campaigns.ipynb`, `campaign_id`), resolves MAC→IPv4 endpoints, augments normal traffic, aligns train/test schemas, trains pooled binary anomaly detectors and per-attack classifiers, calibrates validation thresholds, and exports per-campaign + pooled reconstruction template CSVs under `data/cAPTure/final_datasets/`.
 2. **Synthetic Scenario Generation (`scenario_generator/`, `scenario_configs/`)**: Validates a scored/labeled flow dataset CSV used as flow templates and synthesizes attack scenarios with background traffic through bounded iterative backtracking or an explicit scenario path.
 3. **State-Based Scenario Reconstruction (`scenario_reconstructor/`, `events/`)**: Converts scored flow events into alerts, validates preconditions against tracked host compromise attributes, atomically recovers false-negative alerts from a suspect buffer (including alternative classifications), aggregates alerts into temporal steps by physical idle gap, builds a Temporal AND/OR Causal Attack DAG, and incrementally archives evidence.
 4. **Orthogonal Evaluation (`metrics/`)**: Independently evaluates flow/alert detection, alert-to-step aggregation, temporal step occurrence coverage, and causal AND/OR graph reconstruction & goal detection.
@@ -17,13 +17,14 @@ New production code and tests **must import from the canonical modules**. Existi
 
 | Domain | Canonical Location / Names | Legacy Compatibility Module / Aliases |
 | --- | --- | --- |
+| Preprocessing | `preprocessing.augmentation`<br>`preprocessing.datasets` (`get_subdirs`, `summarize_labeled_flows`)<br>`preprocessing.evaluation` (`evaluate_classifier`, `plot_roc_curve`, `plot_prc_curve`, `evaluate_mappers`, `plot_mapper_roc_curves`, `plot_mapper_prc_curves`)<br>`preprocessing.network` (`is_ipv4`, `filter_ipv4_flows`, `build_mac_to_ipv4`, `resolve_ipv6_with_mac`)<br>`preprocessing.time` (`shift_capture_time`, `load_start_time`, `absolute_flow_time`)<br>`preprocessing.training` (`align_test_schema`, `filter_known_test_classes`, `encode_binary_labels`, `apply_label_encoding`, `calibrate_threshold`, `report_calibrated_threshold`, `split_training_validation`) | — |
 | Flow Events | `events.models.FlowEvent`<br>`events.conversion.CaptureFlowEventConverter` | `event_convertor.flow_event.FlowEvent`<br>`event_convertor.flow_event_generator.CAPTureFlowEventConvertor` |
 | Scenario Generation | `scenario_generator.generator.ScenarioGenerator`<br>`scenario_generator.validation.validate_templates`<br>`scenario_generator.search.ScenarioSearch`<br>`scenario_generator.rendering.render_scenario`<br>`scenario_generator.exceptions.*` | `scenario_generator.scenario_generator.CAPTureScenarioGenerator`<br>`scenario_generator.CAPTureScenarioGenerator` |
 | Reconstruction Models | `scenario_reconstructor.models` (`FlowAlert`, `AttackStep`, `AttackType`, `Precondition`, `RecoveryRequirement`, `Host`, `HostAttribute`, `NetworkState`) | `scenario_reconstructor.scenario_reconstructor` (`FlowExploit`, `Exploit`, `Preconditions`, `ExploitRequirement`) |
 | Reconstruction Engine & Graph | `scenario_reconstructor.engine.ScenarioReconstructor`<br>`scenario_reconstructor.dag` (`AttackScenarioDAG`, `AttackGoal`)<br>`scenario_reconstructor.serialization` (`AlertStepParser`, `NetworkStateParser`) | `scenario_reconstructor.scenario_reconstructor` (`StarNetworkAttackGraphBasedScenarioReconstructor`, `StringToExploitConverter`, `StringToNetworkStateConvertor`) |
 | Stream Management & Alerts | `scenario_reconstructor.manager.ReconstructionManager`<br>`scenario_reconstructor.alerts.AlertFactory`<br>`scenario_reconstructor.recovery` (`RecoveryPlan`, `RecoveryCandidate`) | `scenario_reconstructor.reconstruction_manager` (`ScenarioReconstructionManager`, `ExploitGenerator`) |
 | Evaluation Metrics | `metrics.calculator.MetricsCalculator` (`metrics.detection`, `metrics.aggregation`, `metrics.occurrence`, `metrics.causal`, `metrics.matching`) | `scenario_generator.compute_metrics` (`MetricsCalculator`, `AttackGoal`, `AttackScenarioDAG`) |
-| Campaign Config & Runners | `scenario_configs.loader` (`ScenarioConfig`, `load_scenario_config`)<br>`scenario_configs.capture`<br>`experiments.capture.main`<br>`experiments.batch` (`build_jobs`, `main`)<br>`experiments.reporting` (`IterationRecord`, `write_evaluation_outputs`, `aggregate_batch_results`, `main`) | `scenario_reconstructor.reconstruct_cAPTure`<br>`run_scripts.py` |
+| Campaign Config & Runners | `scenario_configs.loader` (`ScenarioConfig`, `load_scenario_config`)<br>`scenario_configs.capture`<br>`experiments.policy` (`load_policy_config`, `CAPTURE_POLICY_KEYS`, `BATCH_ONLY_POLICY_KEYS`, `ALL_POLICY_KEYS`)<br>`experiments/configs/dollar_char_policy.json`<br>`experiments.capture.main`<br>`experiments.batch` (`build_jobs`, `resolve_dataset_files`, `main`)<br>`experiments.reporting` (`IterationRecord`, `write_evaluation_outputs`, `aggregate_batch_results`, `main`) | `scenario_reconstructor.reconstruct_cAPTure`<br>`run_scripts.py` |
 
 Do **not** change `FlowExploit(...)`, `Exploit(...)`, or `NetworkState(...)` text record formats without updating `AlertStepParser` and `NetworkStateParser` and preserving parser compatibility tests.
 
@@ -35,8 +36,12 @@ Do **not** change `FlowExploit(...)`, `Exploit(...)`, or `NetworkState(...)` tex
   - `scenario_reconstructor/__init__.py` and core domain modules (`models/`, `dag.py`, `engine.py`, `manager.py`, `recovery.py`, `aggregation.py`, `storage.py`, `serialization.py`, `time_utils.py`, `attack_mapper.py`) **must not** import `metrics`, `pandas`, or `sklearn` at import time.
   - Keep CLI dependencies (`pandas`, `events.conversion`, `scenario_configs.capture`) isolated inside `scenario_reconstructor/cli.py` and `scenario_reconstructor/__main__.py`. Do not import `cli.py` from `scenario_reconstructor/__init__.py`.
   - Importing `scenario_configs` and loading the built-in campaign must also remain independent of `metrics`, `pandas`, and `sklearn`; keep `scenario_configs/loader.py` limited to standard-library and domain dependencies.
-- **Import-Safe CLI Runners**:
-  - Importing `experiments/capture.py`, `experiments/batch.py`, `experiments/reporting.py`, `scenario_generator/cli.py`, `scenario_reconstructor/cli.py`, `scenario_reconstructor/reconstruct_cAPTure.py`, or `run_scripts.py` must have **zero side effects** (no CSV reads, file writes, generation, reconstruction, or subprocess launches). All execution must live inside `main(argv=None)`.
+- **Import-Safe CLI Runners & Policy Loader**:
+  - Keep `experiments/policy.py` strictly stdlib-only with zero top-level I/O (no `pandas`, `sklearn`, or `metrics` imports); validate `--policy-config` files before reading CSVs or launching subprocesses.
+  - Importing `experiments/capture.py`, `experiments/batch.py`, `experiments/policy.py`, `experiments/reporting.py`, `scenario_generator/cli.py`, `scenario_reconstructor/cli.py`, `scenario_reconstructor/reconstruct_cAPTure.py`, or `run_scripts.py` must have **zero side effects** (no CSV reads, file writes, generation, reconstruction, or subprocess launches). All execution must live inside `main(argv=None)`.
+- **Notebook Code Hygiene (`tests/preprocessing/test_notebook_helpers.py`)**:
+  - Notebooks under `jupyter notebook/` must not define local helper functions (`def` / `async def`); place reusable helpers in `preprocessing/` and import them.
+  - Every code cell must parse cleanly as valid Python AST (`ast.parse`) — use pure-Python `get_ipython().run_line_magic(...)` and `importlib.reload(...)` rather than IPython `%` magic syntax.
 - **Independent Experiment State**:
   - Use `config.create_hosts()` from `load_scenario_config()` per experiment run rather than mutating module-level globals (`HOSTS`, `BROKER`) across runs. Legacy `HOSTS`-only configurations must use deep copies.
 
@@ -83,24 +88,29 @@ Do not violate these contracts when modifying reconstruction, generation, or met
    - CLI `-f` / `--file` inputs are scored/labeled flow dataset CSVs (scored flow dataset CSVs for reconstruction), used as flow templates during generation.
    - Generator, reconstruction, and evaluation CLIs accept `-c` / `--config` (`capture` by default), an importable `scenario_configs.<name>`, or a `.py` / `.json` config file through `scenario_configs/loader.py`. Validate configuration errors before reading CSV data and pass the selected score-column order to flow conversion.
    - Generator and evaluation CLIs expose mutually exclusive `--scenario-path` and repeatable `--step`. Paths accept JSON step arrays/objects, text lines, or inline `;` / `|` separated steps; individual steps use `attack:src->dst` or `attack,src,dst`. Validate syntax before reading CSV data. Only forward the `path` keyword to `generate_scenario` when an explicit path was supplied.
+9. **Multi-Campaign Preprocessing & Policy Config Contracts**:
+   - Step subdivision in `reconstruction_dataset_creation.ipynb` groups by `["campaign_id", "step_number", "src_ip", "dst_ip"]` so step numbers from different campaigns never collide; flow summaries (`preprocessing.datasets.summarize_labeled_flows` and notebook Section 1.4.2) compute each step's `end_time` from flow lifetimes (`timestamp + bidirectional_duration_ms`).
+   - `--policy-config` JSON files validate allowed keys and strict types via `experiments.policy.load_policy_config` (rejecting unknown keys, `bool` for numeric fields, and singular/plural threshold conflicts in `batch` scope) before reading CSVs or dispatching subprocesses; explicit CLI flags always override JSON values.
+   - `experiments.batch.build_jobs()` preserves its 48-job zero-argument default contract (`DATASET_ROOT = './data/cAPTure/final_datasets/dollar_char/'`, `OUTPUT_ROOT = './data/cAPTure/results/dollar_char/'`); `--workers > 1` preserves deterministic job ordering in aggregated reports; `--resume` skips only jobs whose `_summary.csv` and `_iterations.csv` both exist and are non-empty.
 
 ---
 
 ## 5. Testing & Verification Commands
 
-Run the full test suite from the repository root using the project virtual environment:
+Run the full test suite from the repository root using the active project Python environment:
 
-```powershell
-# Preferred: run all unit, regression, and integration tests via pytest
-.\.venv\Scripts\python.exe -m pytest tests -q
+```bash
+# Preferred when pytest is installed
+python -m pytest tests -q
 
-# Alternative via unittest (NOTE: -t . is required so tests/metrics and tests/events
-# do not shadow top-level metrics/ and events/ packages on sys.path)
-.\.venv\Scripts\python.exe -m unittest discover -s tests -t . -q
+# Standard-library unittest (works everywhere, e.g., conda env without pytest;
+# -t . is required so tests/metrics and tests/events do not shadow top-level packages)
+python -m unittest discover -s tests -t . -q
 
 # Check whitespace and patch hygiene
 git diff --check
 ```
 
+- On Windows `.venv`, invoke `.\.venv\Scripts\python.exe` in place of `python`.
 - Shared test base classes, lifecycle isolation helpers (`ProjectTestCase`), and fixture factories live in `tests/support.py`.
 - Note on Windows sandboxing: If executing inside a restricted sandbox where `.venv\Scripts\python.exe` raises `Access is denied`, invoke Python directly from the host shell outside the sandbox to verify runtime tests.

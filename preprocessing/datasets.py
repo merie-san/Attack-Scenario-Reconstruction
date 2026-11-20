@@ -20,15 +20,30 @@ def get_subdirs(path) -> list[Path]:
 def summarize_labeled_flows(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Sort labeled flows chronologically and compute per-step and per-label summaries."""
     sorted_df = df.sort_values("timestamp").reset_index(drop=True)
+    timestamps = (
+        sorted_df["timestamp"]
+        if pd.api.types.is_datetime64_any_dtype(sorted_df["timestamp"])
+        else pd.to_datetime(sorted_df["timestamp"], utc=True)
+    )
+    duration_col = next(
+        (col for col in ("bidirectional_duration_ms", "duration") if col in sorted_df.columns),
+        None,
+    )
+    flow_end_time = (
+        timestamps + pd.to_timedelta(sorted_df[duration_col], unit="ms")
+        if duration_col is not None
+        else timestamps
+    )
+    work = sorted_df.assign(_flow_start_time=timestamps, _flow_end_time=flow_end_time)
     step_summary = (
-        sorted_df.groupby("step_number", as_index=False)
+        work.groupby("step_number", as_index=False)
         .agg(
             label=("label", "first"),
             phase_name=("phase_name", "first"),
             phase_number=("phase_number", "first"),
             num_flws=("timestamp", "size"),
-            start_time=("timestamp", "min"),
-            end_time=("timestamp", "max"),
+            start_time=("_flow_start_time", "min"),
+            end_time=("_flow_end_time", "max"),
         )
         .assign(duration=lambda g: g["end_time"] - g["start_time"])
     )
